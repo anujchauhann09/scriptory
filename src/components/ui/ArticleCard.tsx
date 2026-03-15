@@ -28,7 +28,6 @@ export const ArticleCard = ({ article, readingTime, index }: ArticleCardProps) =
       whileHover={{ y: shouldReduceMotion ? 0 : -5 }}
       className="rounded-xl border bg-card overflow-hidden hover:shadow-lg transition-shadow"
     >
-      {/* Cover image */}
       <div className="w-full aspect-video overflow-hidden">
         {imgError ? (
           <div className="w-full h-full bg-gradient-to-br from-muted to-muted-foreground/20" />

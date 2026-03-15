@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/Badge';
 import { articles } from '../data/articles';
 import { calculateReadingTime } from '../utils/readingTime';
 import { motion, useReducedMotion } from 'motion/react';
-import { ArrowLeft, Clock, Calendar, User } from 'lucide-react';
+import { ArrowLeft, Clock, Calendar } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 
 export const ArticleDetail = () => {
@@ -24,12 +24,16 @@ export const ArticleDetail = () => {
     const cleanups: (() => void)[] = [];
 
     preElements.forEach((pre) => {
-      if (pre.querySelector('.code-copy-btn')) return;
+      if (pre.parentElement?.classList.contains('code-block-wrapper')) return;
 
       const code = pre.querySelector('code');
       const codeText = code?.innerText ?? pre.innerText;
 
-      pre.style.position = 'relative';
+      const wrapper = document.createElement('div');
+      wrapper.className = 'code-block-wrapper';
+      wrapper.style.cssText = 'position:relative';
+      pre.parentNode?.insertBefore(wrapper, pre);
+      wrapper.appendChild(pre);
 
       const btn = document.createElement('button');
       btn.className = 'code-copy-btn';
@@ -45,7 +49,7 @@ export const ArticleDetail = () => {
         'font-size:0.75rem',
         'font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace',
         'color:#8b949e',
-        'background:transparent',
+        'background:#161b22',
         'border:1px solid #30363d',
         'border-radius:0.375rem',
         'cursor:pointer',
@@ -85,12 +89,13 @@ export const ArticleDetail = () => {
       };
 
       btn.addEventListener('click', handleClick);
-      pre.appendChild(btn);
+      wrapper.appendChild(btn);
 
       cleanups.push(() => {
         if (resetTimer) clearTimeout(resetTimer);
         btn.removeEventListener('click', handleClick);
-        btn.remove();
+        wrapper.parentNode?.insertBefore(pre, wrapper);
+        wrapper.remove();
       });
     });
 
@@ -145,7 +150,7 @@ export const ArticleDetail = () => {
             <div className="flex items-center justify-between border-b border-border pb-8 text-sm text-muted-foreground">
               <div className="flex items-center space-x-4">
                 <div className="flex items-center">
-                  <User className="mr-2 h-4 w-4" />
+                  <img src="/anuj.png" alt={article.author} className="mr-2 h-6 w-6 rounded-full object-cover" />
                   <span className="font-medium text-foreground">{article.author}</span>
                 </div>
                 <div className="flex items-center">

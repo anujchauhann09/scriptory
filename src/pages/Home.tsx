@@ -77,7 +77,7 @@ export const Home = () => {
               <p className="mb-4 text-muted-foreground">{featuredArticle.excerpt}</p>
               <div className="mt-auto flex items-center space-x-2">
                 <img
-                  src="https://picsum.photos/seed/author/100/100"
+                  src="/anuj.png"
                   alt={featuredArticle.author}
                   className="h-8 w-8 rounded-full"
                   referrerPolicy="no-referrer"
