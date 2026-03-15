@@ -18,5 +18,8 @@ export default defineConfig(({mode}) => {
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
     },
+    build: {
+      target: ['es2015', 'chrome87', 'firefox78', 'safari14'],
+    },
   };
 });

@@ -24,7 +24,7 @@ export const Navbar = () => {
   ];
 
   return (
-    <nav className="sticky top-0 z-50 w-full backdrop-blur-md bg-background/80 border-b border-border/50">
+    <nav className="sticky top-0 z-50 w-full [-webkit-backdrop-filter:blur(12px)] backdrop-blur-md bg-background/80 border-b border-border/50">
       <Container className="flex h-16 items-center justify-between">
         <Link to="/" className="flex items-center space-x-2">
           <span className="font-sans text-xl font-bold tracking-tight">Scriptory</span>
