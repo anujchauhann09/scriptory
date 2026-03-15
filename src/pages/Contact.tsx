@@ -72,7 +72,7 @@ export const Contact = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <h1 className="mb-8 text-center font-serif text-4xl font-bold tracking-tight sm:text-5xl">Get in Touch</h1>
+            <h1 className="mb-8 text-center text-4xl font-bold tracking-tight sm:text-5xl">Get in Touch</h1>
             <p className="mb-12 text-center text-lg text-muted-foreground">
               Have a question, a project idea, or just want to say hi? Fill out the form below and I'll get back to you as soon as possible.
             </p>
@@ -82,13 +82,13 @@ export const Contact = () => {
                 <label htmlFor="name" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                   Name
                 </label>
-                <Input id="name" name="name" placeholder="Your Name" required />
+                <Input id="name" name="name" placeholder="Your Name" required className="focus-visible:ring-primary" />
               </div>
               <div className="space-y-2">
                 <label htmlFor="email" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                   Email
                 </label>
-                <Input id="email" name="email" type="email" placeholder="your.email@example.com" required />
+                <Input id="email" name="email" type="email" placeholder="your.email@example.com" required className="focus-visible:ring-primary" />
               </div>
               <div className="space-y-2">
                 <label htmlFor="message" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
@@ -98,20 +98,20 @@ export const Contact = () => {
                   id="message"
                   name="message"
                   rows={5}
-                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   placeholder="Your message..."
                   required
                 />
               </div>
 
               {error && (
-                <div className="rounded-md bg-red-50 p-4 text-sm text-red-500 dark:bg-red-900/20 dark:text-red-400">
+                <div className="rounded-md bg-destructive/10 p-4 text-sm text-destructive">
                   {error}
                 </div>
               )}
 
               {success && (
-                <div className="rounded-md bg-green-50 p-4 text-sm text-green-500 dark:bg-green-900/20 dark:text-green-400">
+                <div className="rounded-md bg-green-50 dark:bg-green-900/20 p-4 text-sm text-green-700">
                   Message sent successfully! I'll be in touch soon.
                 </div>
               )}

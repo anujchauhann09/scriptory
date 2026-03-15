@@ -9,7 +9,7 @@ export const Footer = () => {
   const [newsletterStatus, setNewsletterStatus] = useState('');
   const [newsletterLoading, setNewsletterLoading] = useState(false);
 
-  const handleNewsletterSubmit = async (e) => {
+  const handleNewsletterSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setNewsletterStatus('');
 
@@ -54,7 +54,7 @@ export const Footer = () => {
         <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
           
           <div className="space-y-4">
-            <h3 className="font-serif text-lg font-bold text-foreground">
+            <h3 className="text-lg font-bold text-foreground">
               Scriptory
             </h3>
             <p className="text-sm">
@@ -62,7 +62,6 @@ export const Footer = () => {
             </p>
           </div>
 
-          {/* Links */}
           <div>
             <h4 className="mb-4 font-semibold text-foreground">Links</h4>
             <ul className="space-y-2 text-sm">
@@ -76,13 +75,13 @@ export const Footer = () => {
           <div>
             <h4 className="mb-4 font-semibold text-foreground">Social</h4>
             <div className="flex space-x-4">
-              <a href="https://github.com/anujchauhann09" className="hover:text-primary" aria-label="GitHub">
+              <a href="https://github.com/anujchauhann09" className="hover:text-primary transition-colors duration-200" aria-label="GitHub">
                 <Github className="h-5 w-5" />
               </a>
-              <a href="https://x.com/anujchauhannn" className="hover:text-primary" aria-label="Twitter">
+              <a href="https://x.com/anujchauhannn" className="hover:text-primary transition-colors duration-200" aria-label="Twitter">
                 <Twitter className="h-5 w-5" />
               </a>
-              <a href="https://linkedin.com/in/anujchauhann" className="hover:text-primary" aria-label="LinkedIn">
+              <a href="https://linkedin.com/in/anujchauhann" className="hover:text-primary transition-colors duration-200" aria-label="LinkedIn">
                 <Linkedin className="h-5 w-5" />
               </a>
             </div>
