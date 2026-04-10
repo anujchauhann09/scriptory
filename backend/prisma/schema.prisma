@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  email     String   @unique
+  password  String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  profile   Profile?
+  articles  Article[]
+  comments  Comment[]
+  likes     Like[]
+
+  @@index([createdAt])
+}
+
+model Profile {
+  id        Int     @id @default(autoincrement())
+  uuid      String  @unique @default(uuid())
+  userId    Int     @unique
+  name      String?
+  bio       String?
+  avatarUrl String?
+  user      User    @relation(fields: [userId], references: [id])
+}
+
+model Article {
+  id         Int      @id @default(autoincrement())
+  uuid       String   @unique @default(uuid())
+  title      String
+  subtitle   String?
+  slug       String   @unique
+  excerpt    String?
+  content    String
+  coverImage String?
+  published  Boolean  @default(true)
+  readingTime Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  authorId   Int
+  author     User         @relation(fields: [authorId], references: [id])
+  tags       TagOnArticle[]
+  comments   Comment[]
+  views      View?
+  likes      Like[]
+
+  @@index([authorId])
+  @@index([createdAt])
+  @@index([published])
+  @@index([authorId, createdAt])
+}
+
+model Tag {
+  id       Int            @id @default(autoincrement())
+  uuid     String         @unique @default(uuid())
+  name     String         @unique
+  articles TagOnArticle[]
+}
+
+model TagOnArticle {
+  articleId Int
+  tagId     Int
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, tagId])
+  @@index([tagId])
+}
+
+model Comment {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  content   String
+  createdAt DateTime @default(now())
+  userId    Int
+  articleId Int
+  user      User    @relation(fields: [userId], references: [id])
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([articleId, createdAt])
+}
+
+model View {
+  id        Int    @id @default(autoincrement())
+  uuid      String @unique @default(uuid())
+  articleId Int    @unique
+  count     Int    @default(0)
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  records   ViewRecord[]
+}
+
+model ViewRecord {
+  id          Int      @id @default(autoincrement())
+  articleId   Int
+  viewId      Int
+  userId      Int?     // null = anonymous
+  fingerprint String   // IP+UA hash for anonymous, uuid for logged-in
+  createdAt   DateTime @default(now())
+
+  view    View    @relation(fields: [viewId], references: [id], onDelete: Cascade)
+
+  // One unique view per viewer per article
+  @@unique([articleId, fingerprint])
+  @@index([articleId])
+  @@index([userId])
+}
+
+model Like {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  articleId Int
+  createdAt DateTime @default(now())
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+  @@index([articleId])
+  @@index([userId])
+}
