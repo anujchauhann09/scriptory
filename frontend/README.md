@@ -62,7 +62,7 @@ frontend/
 
 ```bash
 cd frontend
-cp ../.env.example .env   # or create .env manually
+cp .env.example .env   # or create .env manually
 npm install
 npm run dev               # runs on :3000
 ```
