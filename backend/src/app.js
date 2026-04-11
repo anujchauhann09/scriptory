@@ -63,12 +63,12 @@ app.use("/api/users", userRoutes);
 app.use("/api/articles", articleRoutes);
 app.use("/api/articles", viewRoutes);                          
 app.use("/api/articles", likeRoutes);                          
-app.use("/api/articles/:articleId/comments", commentRoutes);  // nested comments
+app.use("/api/articles/:articleId/comments", commentRoutes);  
 app.use("/api/tags", tagRoutes);
 app.use("/api/upload", uploadRoutes);
 
 app.use((req, res) => {
-  res.status(404).json({ success: false, message: `Route ${req.method} ${req.path} not found` });
+  res.status(404).json({ success: false, message: "The requested resource was not found." });
 });
 
 app.use(errorMiddleware);
