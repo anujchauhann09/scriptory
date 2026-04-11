@@ -90,6 +90,7 @@ export const WriteArticle = () => {
   const [loadingEdit, setLoadingEdit] = useState(!!editUuid);
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
+  const [excerpt, setExcerpt] = useState('');
   const [coverImage, setCoverImage] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
@@ -116,6 +117,7 @@ export const WriteArticle = () => {
     if (!editArticle) return;
     setTitle(editArticle.title);
     setSubtitle(editArticle.subtitle || '');
+    setExcerpt(editArticle.excerpt || '');
     setCoverImage(editArticle.coverImage || '');
     setTags(editArticle.tags);
     setPublished(editArticle.published);
@@ -184,11 +186,12 @@ export const WriteArticle = () => {
     setSaving(true);
     setError('');
     try {
+      const autoExcerpt = content.replace(/[#*`>_[\]!<>]/g, '').slice(0, 200).trim();
       const payload: ArticlePayload = {
         title: title.trim(),
         subtitle: subtitle.trim() || undefined,
         content: editArticle ? content : mdToHtml(content),
-        excerpt: content.replace(/[#*`>_[\]!<>]/g, '').slice(0, 200).trim(),
+        excerpt: excerpt.trim() || autoExcerpt,
         coverImage: editArticle ? (coverImage || null) : (coverImage || undefined),
         published,
         tags,
@@ -304,6 +307,21 @@ export const WriteArticle = () => {
                   rows={1}
                   className="w-full resize-none border-0 bg-transparent text-xl text-muted-foreground placeholder:text-muted-foreground/40 focus:outline-none"
                 />
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-muted-foreground">
+                    Excerpt
+                  </label>
+                  <textarea
+                    placeholder="Short description of the article…"
+                    value={excerpt}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setExcerpt(e.target.value)}
+                    rows={2}
+                    maxLength={500}
+                    className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <p className="mt-1 text-right text-xs text-muted-foreground">{excerpt.length}/500</p>
+                </div>
 
                 <div>
                   <div className="mb-2 flex flex-wrap gap-2">

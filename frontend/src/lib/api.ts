@@ -47,7 +47,7 @@ export interface ApiArticle {
   createdAt: string;
   updatedAt: string;
   viewCount: number;
-  tags: string[];           
+  tags: string[];
   author: {
     uuid: string;
     profile?: { name?: string; avatarUrl?: string };
