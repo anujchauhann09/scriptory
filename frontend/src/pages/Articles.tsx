@@ -92,7 +92,7 @@ export const Articles = () => {
               [1, 2, 3, 4, 5, 6].map((i) => <ArticleCardSkeleton key={i} />)
             ) : articles.length > 0 ? (
               articles.map((article, index) => (
-                <ArticleCard key={article.id} article={article} index={index} />
+                <ArticleCard key={article.uuid} article={article} index={index} />
               ))
             ) : (
               <div className="col-span-full py-12 text-center text-muted-foreground">

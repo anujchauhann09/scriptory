@@ -113,12 +113,14 @@ export const Home = () => {
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {[1, 2, 3].map((i) => <ArticleCardSkeleton key={i} />)}
             </div>
-          ) : (
+          ) : recentArticles.length > 0 ? (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {recentArticles.map((article, index) => (
-                <ArticleCard key={article.id} article={article} index={index} />
+                <ArticleCard key={article.uuid} article={article} index={index} />
               ))}
             </div>
+          ) : (
+            <p className="py-12 text-center text-muted-foreground">No articles found.</p>
           )}
         </Container>
       </Section>
