@@ -446,11 +446,17 @@ export const ArticleDetail = () => {
               {user ? (
                 <form onSubmit={handleCommentSubmit} className="mb-8">
                   <div className="flex items-start gap-3">
-                    <img
-                      src={user.profile?.avatarUrl || '/anuj.png'}
-                      alt={user.profile?.name || user.email}
-                      className="mt-1 h-8 w-8 rounded-full object-cover"
-                    />
+                    {user.profile?.avatarUrl ? (
+                      <img
+                        src={user.profile.avatarUrl}
+                        alt={user.profile?.name || user.email}
+                        className="mt-1 h-8 w-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                        {(user.profile?.name || user.email).split(/[\s@]/)[0].slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
                     <div className="flex-1">
                       <textarea
                         value={commentText}
@@ -487,11 +493,16 @@ export const ArticleDetail = () => {
                 <div className="space-y-6">
                   {comments.map((comment) => {
                     const name = comment.user.profile?.name || 'User';
-                    const avatar = comment.user.profile?.avatarUrl || '/anuj.png';
                     const canDelete = isAdmin || user?.uuid === comment.user.uuid;
                     return (
                       <div key={comment.uuid} className="flex items-start gap-3">
-                        <img src={avatar} alt={name} className="mt-0.5 h-8 w-8 rounded-full object-cover" />
+                        {comment.user.profile?.avatarUrl ? (
+                          <img src={comment.user.profile.avatarUrl} alt={name} className="mt-0.5 h-8 w-8 rounded-full object-cover" />
+                        ) : (
+                          <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+                            {name.split(/[\s@]/)[0].slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
