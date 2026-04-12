@@ -35,7 +35,7 @@ export const Home = () => {
             transition={{ duration: shouldReduceMotion ? 0 : 0.5 }}
             className="mb-4 font-sans text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl"
           >
-            Thoughts on Design &amp; Code
+            My Bugs, My Lessons, Your Advantage.
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
@@ -43,7 +43,7 @@ export const Home = () => {
             transition={{ duration: shouldReduceMotion ? 0 : 0.5, delay: shouldReduceMotion ? 0 : 0.1 }}
             className="mb-8 max-w-2xl text-lg text-muted-foreground sm:text-xl"
           >
-            A minimal space for exploring the intersection of minimalist design and modern web development.
+            Real-world backend engineering — system design, APIs, distributed systems, and production war stories. Learned the hard way so you don't have to.
           </motion.p>
           <motion.div
             initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
@@ -129,7 +129,7 @@ export const Home = () => {
         <Container className="text-center">
           <h2 className="mb-4 font-sans text-3xl font-bold">Stay Updated</h2>
           <p className="mb-8 max-w-md mx-auto text-muted-foreground">
-            Have a question or want to get in touch? We'd love to hear from you.
+            Have a question, want to discuss backend architecture, or just want to say hi? Drop a message.
           </p>
           <Link to="/contact">
             <Button size="lg">Get in Touch</Button>

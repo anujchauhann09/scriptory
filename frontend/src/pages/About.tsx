@@ -19,9 +19,13 @@ export const About = () => {
           </h1>
 
           <p>
-            Hello! I'm a backend-focused software developer who enjoys designing
-            scalable systems and building reliable, production-grade APIs. My
-            primary interests lie in system design, distributed architecture,
+            Yes, this entire blog is owned, operated, and occasionally broken by <strong>Anuj Chauhan</strong> — one person, one keyboard, zero regrets.
+          </p>
+
+          <p>
+            I'm a backend-focused software developer who enjoys designing
+            scalable systems and building reliable, production-grade APIs.
+            My primary interests lie in system design, distributed architecture,
             and performance-oriented backend engineering.
           </p>
 
