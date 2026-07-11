@@ -8,6 +8,7 @@ const getMe = async (userUuid) => {
       email: true,
       role: true,
       createdAt: true,
+      twoFactorEnabled: true,
       profile: { select: { name: true, bio: true, avatarUrl: true } },
     },
   });

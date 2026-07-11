@@ -7,16 +7,18 @@ import { Skeleton } from '../components/ui/Skeleton';
 import {
   contactApi,
   newsletterApi,
+  auditApi,
   type AdminContactMessage,
   type AdminSubscriber,
+  type AuditEntry,
 } from '../lib/api';
 import {
   Mail, Users, Inbox, RefreshCw, AlertCircle, Check, CircleCheck,
-  Trash2, Download, Loader2,
+  Trash2, Download, Loader2, Activity,
 } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 
-type Tab = 'messages' | 'subscribers';
+type Tab = 'messages' | 'subscribers' | 'activity';
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -34,6 +36,7 @@ export const Admin = () => {
   const [tab, setTab] = useState<Tab>('messages');
   const [messages, setMessages] = useState<AdminContactMessage[]>([]);
   const [subscribers, setSubscribers] = useState<AdminSubscriber[]>([]);
+  const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -42,10 +45,11 @@ export const Admin = () => {
   const load = () => {
     setLoading(true);
     setError('');
-    Promise.all([contactApi.list(), newsletterApi.listSubscribers()])
-      .then(([m, s]) => {
+    Promise.all([contactApi.list(), newsletterApi.listSubscribers(), auditApi.list()])
+      .then(([m, s, a]) => {
         setMessages(m);
         setSubscribers(s);
+        setAudit(a);
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -122,6 +126,7 @@ export const Admin = () => {
   const tabs: { key: Tab; label: string; icon: React.ReactNode; count: number }[] = [
     { key: 'messages', label: 'Messages', icon: <Mail className="h-4 w-4" />, count: messages.length },
     { key: 'subscribers', label: 'Subscribers', icon: <Users className="h-4 w-4" />, count: subscribers.length },
+    { key: 'activity', label: 'Activity', icon: <Activity className="h-4 w-4" />, count: audit.length },
   ];
 
   return (
@@ -209,7 +214,7 @@ export const Admin = () => {
                   onRequestDelete={setConfirmId}
                   onConfirmDelete={deleteMessage}
                 />
-              ) : (
+              ) : tab === 'subscribers' ? (
                 <SubscribersList
                   subscribers={subscribers}
                   activeCount={activeSubscribers}
@@ -219,6 +224,8 @@ export const Admin = () => {
                   onRequestDelete={setConfirmId}
                   onConfirmDelete={deleteSubscriber}
                 />
+              ) : (
+                <ActivityList entries={audit} />
               )}
             </motion.div>
           )}
@@ -392,6 +399,53 @@ const SubscribersList = ({
                   </button>
                 )}
               </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  'auth.login.success': 'Signed in',
+  'auth.login.failure': 'Failed sign-in',
+  'auth.register': 'Account created',
+  'auth.password.change': 'Password changed',
+  'auth.2fa.enable': '2FA enabled',
+  'auth.2fa.disable': '2FA disabled',
+  'article.create': 'Article created',
+  'article.update': 'Article updated',
+  'article.delete': 'Article deleted',
+};
+
+const formatDateTime = (iso: string) =>
+  new Date(iso).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+
+const ActivityList = ({ entries }: { entries: AuditEntry[] }) => {
+  if (entries.length === 0) {
+    return <EmptyState icon={<Activity className="h-5 w-5" />} text="No recorded activity yet." />;
+  }
+  return (
+    <div className="card-premium overflow-hidden rounded-2xl">
+      <ul className="divide-y divide-border">
+        {entries.map((e) => {
+          const failure = e.action === 'auth.login.failure';
+          return (
+            <li key={e.uuid} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+              <div className="flex items-center gap-3">
+                <span className={`h-2 w-2 shrink-0 rounded-full ${failure ? 'bg-destructive' : 'bg-brand'}`} />
+                <div>
+                  <span className="text-sm font-medium">{ACTION_LABELS[e.action] || e.action}</span>
+                  {e.detail && <span className="ml-2 text-xs text-muted-foreground">{e.detail}</span>}
+                  <div className="text-xs text-muted-foreground">
+                    {e.actorEmail || 'anonymous'}{e.ip ? ` · ${e.ip}` : ''}
+                  </div>
+                </div>
+              </div>
+              <span className="text-xs text-muted-foreground">{formatDateTime(e.createdAt)}</span>
             </li>
           );
         })}

@@ -5,6 +5,7 @@ import { userApi, uploadApi } from '../lib/api';
 import { Container } from '../components/ui/Container';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { SecuritySettings } from '../components/SecuritySettings';
 import { Camera, Loader2 } from 'lucide-react';
 
 export const Profile = () => {
@@ -151,6 +152,8 @@ export const Profile = () => {
             {saving ? 'Saving…' : 'Save profile'}
           </Button>
         </form>
+
+        <SecuritySettings />
       </Container>
     </>
   );

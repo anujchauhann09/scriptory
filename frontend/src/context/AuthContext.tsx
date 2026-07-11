@@ -1,112 +1,112 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { authApi, userApi } from '../lib/api';
 
 export type Role = 'ADMIN' | 'USER';
 
 export interface AuthUser {
-  id: number;
   uuid: string;
   email: string;
   role: Role;
-  profile?: { name?: string | null; avatarUrl?: string | null };
+  twoFactorEnabled?: boolean;
+  profile?: { name?: string | null; avatarUrl?: string | null; bio?: string | null };
 }
 
 interface AuthContextType {
   user: AuthUser | null;
-  token: string | null;
   isAdmin: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, totp?: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   updateProfile: (profile: { name?: string | null; bio?: string | null; avatarUrl?: string | null }) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// non-sensitive user snapshot for instant paint. The auth token itself lives in
+// an httpOnly cookie
+const CACHE_KEY = 'auth_user';
+
+const readCachedUser = (): AuthUser | null => {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? (JSON.parse(raw) as AuthUser) : null;
+  } catch {
+    return null;
+  }
+};
+
+const cacheUser = (user: AuthUser | null) => {
+  try {
+    if (user) localStorage.setItem(CACHE_KEY, JSON.stringify(user));
+    else localStorage.removeItem(CACHE_KEY);
+  } catch {
+    /* ignore */
+  }
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const cached = readCachedUser();
+  const [user, setUser] = useState<AuthUser | null>(cached);
   const [isLoading, setIsLoading] = useState(true);
 
+  const applyUser = (u: AuthUser | null) => {
+    setUser(u);
+    cacheUser(u);
+  };
+
+  // on load, confirm the session against the server (the cookie is sent automatically)
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('auth');
-      if (stored) {
-        const { user, token } = JSON.parse(stored);
-        setUser(user);
-        setToken(token);
-      }
-    } catch {
-      localStorage.removeItem('auth');
-    } finally {
-      setIsLoading(false);
-    }
+    let cancelled = false;
+    userApi
+      .me()
+      .then((u) => { if (!cancelled) applyUser(u as AuthUser); })
+      .catch(() => { if (!cancelled) applyUser(null); }) // 401 / offline → treat as signed out
+      .finally(() => { if (!cancelled) setIsLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
+  const login = async (email: string, password: string, totp?: string) => {
+    const u = await authApi.login(email, password, totp);
+    applyUser(u as AuthUser);
+  };
+
   const register = async (email: string, password: string, name?: string) => {
-    let res: Response;
-    try {
-      res = await fetch(`${API}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, name }),
-      });
-    } catch {
-      throw new Error('Unable to connect to the server. Please try again later.');
-    }
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.message || 'Registration failed');
-
-    const { user, token } = json.data;
-    setUser(user);
-    setToken(token);
-    localStorage.setItem('auth', JSON.stringify({ user, token }));
+    const u = await authApi.register(email, password, name);
+    applyUser(u as AuthUser);
   };
 
-  const login = async (email: string, password: string) => {
-    let res: Response;
+  const logout = async () => {
     try {
-      res = await fetch(`${API}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
+      await authApi.logout();
     } catch {
-      throw new Error('Unable to connect to the server. Please try again later.');
+      /* clear locally regardless */
     }
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.message || 'Login failed');
-
-    const { user, token } = json.data;
-    setUser(user);
-    setToken(token);
-    localStorage.setItem('auth', JSON.stringify({ user, token }));
+    applyUser(null);
   };
 
-  const logout = () => {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem('auth');
+  const refreshUser = async () => {
+    try {
+      const u = await userApi.me();
+      applyUser(u as AuthUser);
+    } catch {
+      applyUser(null);
+    }
   };
 
   const updateProfile = (profile: { name?: string | null; bio?: string | null; avatarUrl?: string | null }) => {
     setUser((prev) => {
       if (!prev) return prev;
       const updated = { ...prev, profile: { ...prev.profile, ...profile } };
-      const stored = localStorage.getItem('auth');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        localStorage.setItem('auth', JSON.stringify({ ...parsed, user: updated }));
-      }
+      cacheUser(updated);
       return updated;
     });
   };
 
   return (
     <AuthContext.Provider
-      value={{ user, token, isAdmin: user?.role === 'ADMIN', isLoading, login, register, logout, updateProfile }}
+      value={{ user, isAdmin: user?.role === 'ADMIN', isLoading, login, register, logout, refreshUser, updateProfile }}
     >
       {children}
     </AuthContext.Provider>

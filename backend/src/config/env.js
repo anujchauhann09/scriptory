@@ -19,8 +19,21 @@ const config = {
     pass: process.env.SMTP_PASS,
     from: process.env.MAIL_FROM || process.env.SMTP_USER,
   },
-  // Where contact-form submissions are emailed (defaults to the admin address)
+  // where contact-form submissions are emailed (defaults to the admin address)
   contactRecipient: process.env.CONTACT_RECIPIENT || process.env.ADMIN_EMAIL,
+
+  // auth cookie settings. secure=true in production (HTTPS required)
+  // sameSite defaults to "lax" (works when frontend + API share a site, incl.
+  // localhost). Use "none" (with HTTPS) if they're on different sites
+  cookie: {
+    name: "token",
+    secure: (process.env.NODE_ENV || "development") === "production",
+    sameSite: process.env.COOKIE_SAMESITE || "lax",
+    domain: process.env.COOKIE_DOMAIN || undefined,
+    // JWT expiry drives cookie maxAge; keep them in sync (default 7 days)
+    maxAgeMs: 7 * 24 * 60 * 60 * 1000,
+  },
+  twoFactorIssuer: process.env.TWO_FACTOR_ISSUER || "Scriptory",
 };
 
 const required = ["JWT_SECRET", "DATABASE_URL"];

@@ -1,6 +1,7 @@
 const articleService = require("./article.service");
 const { createArticleSchema, updateArticleSchema, listArticlesSchema } = require("./article.validation");
 const { sendSuccess, sendError } = require("../../utils/response");
+const { logAudit } = require("../../utils/audit");
 
 const listArticles = async (req, res, next) => {
   try {
@@ -34,6 +35,7 @@ const createArticle = async (req, res, next) => {
       return sendError(res, 400, "Validation failed", error.details.map((d) => d.message));
     }
     const article = await articleService.createArticle(req.user.uuid, value);
+    logAudit("article.create", { actorUuid: req.user.uuid, actorEmail: req.user.email, ip: req.ip, detail: article.title });
     return sendSuccess(res, 201, "Article created", article);
   } catch (err) {
     next(err);
@@ -47,6 +49,7 @@ const updateArticle = async (req, res, next) => {
       return sendError(res, 400, "Validation failed", error.details.map((d) => d.message));
     }
     const article = await articleService.updateArticleByUuid(req.params.uuid, value);
+    logAudit("article.update", { actorUuid: req.user.uuid, actorEmail: req.user.email, ip: req.ip, detail: article.title });
     return sendSuccess(res, 200, "Article updated", article);
   } catch (err) {
     next(err);
@@ -56,6 +59,7 @@ const updateArticle = async (req, res, next) => {
 const deleteArticle = async (req, res, next) => {
   try {
     await articleService.deleteArticleByUuid(req.params.uuid);
+    logAudit("article.delete", { actorUuid: req.user.uuid, actorEmail: req.user.email, ip: req.ip, detail: req.params.uuid });
     return sendSuccess(res, 200, "Article deleted");
   } catch (err) {
     next(err);

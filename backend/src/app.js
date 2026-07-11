@@ -2,6 +2,7 @@ const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
 const morgan = require("morgan");
+const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
 
 const config = require("./config/env");
@@ -18,6 +19,7 @@ const uploadRoutes = require("./modules/upload/upload.routes");
 const likeRoutes = require("./modules/like/like.routes");
 const contactRoutes = require("./modules/contact/contact.routes");
 const newsletterRoutes = require("./modules/newsletter/newsletter.routes");
+const auditRoutes = require("./modules/audit/audit.routes");
 
 const app = express();
 
@@ -61,6 +63,7 @@ app.use("/api/newsletter/subscribe", publicWriteLimiter);
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 if (config.nodeEnv !== "test") {
   app.use(
@@ -84,6 +87,7 @@ app.use("/api/tags", tagRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/newsletter", newsletterRoutes);
+app.use("/api/audit", auditRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "The requested resource was not found." });

@@ -4,18 +4,22 @@ const config = require("../config/env");
 
 const optionalAuth = async (req, _res, next) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith("Bearer ")) return next();
+    const token =
+      (req.cookies && req.cookies[config.cookie.name]) ||
+      (req.headers.authorization?.startsWith("Bearer ")
+        ? req.headers.authorization.split(" ")[1]
+        : null);
+    if (!token) return next();
 
-    const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, config.jwtSecret);
 
     const user = await prisma.user.findUnique({
       where: { uuid: decoded.userUuid },
-      select: { id: true, uuid: true, email: true, role: true },
+      select: { id: true, uuid: true, email: true, role: true, tokenVersion: true },
     });
 
-    if (user) req.user = user;
+    // Honour session revocation here too.
+    if (user && decoded.tv === user.tokenVersion) req.user = user;
   } catch {
     // invalid/expired token — continue as anonymous
   }

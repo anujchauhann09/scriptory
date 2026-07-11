@@ -24,12 +24,36 @@ model User {
   password  String
   role      Role     @default(USER)
   createdAt DateTime @default(now())
+
+  // bumped to invalidate every outstanding JWT for this user (logout-everywhere,
+  // password change, 2FA change). The token embeds the version it was signed with
+  tokenVersion       Int      @default(0)
+
+  // TOTP two-factor auth
+  twoFactorEnabled   Boolean  @default(false)
+  twoFactorSecret    String?  // active secret once enabled
+  twoFactorPending   String?  // temp secret during setup, before first verification
+
   profile   Profile?
   articles  Article[]
   comments  Comment[]
   likes     Like[]
 
   @@index([createdAt])
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  uuid       String   @unique @default(uuid())
+  action     String
+  actorUuid  String?
+  actorEmail String?
+  ip         String?
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action])
 }
 
 model Profile {
