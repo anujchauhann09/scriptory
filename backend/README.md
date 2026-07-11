@@ -6,8 +6,13 @@ Express + Prisma REST API for the Scriptory blogging platform.
 
 - Node.js, Express
 - Prisma ORM + PostgreSQL
-- JWT authentication (bcryptjs + jsonwebtoken)
+- Cookie-based JWT auth (bcryptjs + jsonwebtoken + cookie-parser)
+- TOTP two-factor auth (otplib + qrcode)
+- Nodemailer (SMTP email — contact replies, welcome, weekly digest)
 - Cloudinary (image uploads via multer-storage-cloudinary)
+- sharp (auto-generated OG preview images)
+- node-cron (draft auto-publish + weekly digest)
+- @google/genai (content-embedding "related posts", optional)
 - Joi (request validation)
 - Helmet, CORS, express-rate-limit (security)
 - Winston + Morgan (logging)
@@ -19,33 +24,43 @@ backend/
 ├── prisma/
 │   ├── schema.prisma        # Data models
 │   ├── migrations/          # Migration history
-│   └── seed.js              # Admin user seed
+│   └── seed.js              # Admin seed (from env; skipped if unset)
 ├── src/
 │   ├── config/
 │   │   ├── db.js            # Prisma client singleton
 │   │   ├── cloudinary.js    # Multer + Cloudinary storage configs
+│   │   ├── mailer.js        # Nodemailer transport (no-ops if SMTP unset)
 │   │   └── env.js           # Validated env variables
 │   ├── middleware/
-│   │   ├── auth.middleware.js        # JWT verification → req.user
-│   │   ├── optionalAuth.middleware.js # Attaches user if token present
-│   │   ├── admin.middleware.js       # Role guard (ADMIN only)
-│   │   └── error.middleware.js       # Centralised error handler
+│   │   ├── auth.middleware.js         # Reads cookie (or Bearer) → verifies JWT + tokenVersion
+│   │   ├── optionalAuth.middleware.js # Attaches user if a valid session is present
+│   │   ├── admin.middleware.js        # Role guard (ADMIN only)
+│   │   └── error.middleware.js        # Centralised error handler
 │   ├── modules/
-│   │   ├── auth/            # register, login
-│   │   ├── article/         # CRUD, slug-based lookup, uuid-based mutations
+│   │   ├── auth/            # register, login (+2FA), logout, change-password, 2FA setup/enable/disable
+│   │   ├── article/         # CRUD, FTS, slug lookup, scheduling, related (embeddings), audited
 │   │   ├── comment/         # Nested under articles, owner/admin delete
 │   │   ├── like/            # Toggle like, status
+│   │   ├── bookmark/        # Save / status (article-scoped) + saved list
 │   │   ├── tag/             # List tags
 │   │   ├── upload/          # Cover, inline, avatar upload to Cloudinary
 │   │   ├── user/            # Get me, update profile
-│   │   └── view/            # Unique view tracking
+│   │   ├── view/            # Unique view tracking
+│   │   ├── contact/         # Submit (public) + list/handle/delete (admin)
+│   │   ├── newsletter/      # Subscribe / two-step unsubscribe + list/delete + digest (admin)
+│   │   ├── analytics/       # Admin dashboard overview
+│   │   ├── stats/           # Public totals (homepage strip)
+│   │   ├── audit/           # Admin audit-log list
+│   │   ├── feed/            # /rss.xml, /sitemap.xml, /robots.txt (root-mounted)
+│   │   └── og/              # /og/:slug.png branded preview images (sharp)
 │   ├── utils/
-│   │   ├── logger.js        # Winston logger
-│   │   ├── readingTime.js   # Word count → minutes
-│   │   ├── response.js      # sendSuccess / sendError helpers
-│   │   └── slugify.js       # Title → URL slug
+│   │   ├── audit.js         # logAudit() + listAudit()
+│   │   ├── embedding.js     # Gemini embeddings + cosine similarity (no-ops without key)
+│   │   ├── emailTemplate.js # Branded, client-safe HTML email shell
+│   │   ├── logger.js  readingTime.js  response.js  slugify.js
+│   ├── scheduler.js         # node-cron: draft auto-publish (every min) + weekly digest (opt-in)
 │   ├── app.js               # Express app setup, routes, middleware
-│   └── server.js            # HTTP server entry point
+│   └── server.js            # HTTP server entry point (starts scheduler)
 ```
 
 ## Getting Started
@@ -55,7 +70,7 @@ cd backend
 cp .env.example .env    # fill in your values
 npm install
 npx prisma migrate dev  # create tables
-npm run seed            # create admin user
+npm run seed            # create admin (only if ADMIN_EMAIL/ADMIN_PASSWORD set)
 npm run dev             # runs on :5000
 ```
 
@@ -68,19 +83,48 @@ JWT_EXPIRES_IN=1d
 PORT=5000
 NODE_ENV=development
 FRONTEND_URL=http://localhost:3000
-ADMIN_EMAIL=admin@scriptory.com
-ADMIN_PASSWORD=Admin@123456
+API_URL=http://localhost:5000            # public URL of this API (email links)
+
+# Auth cookie
+COOKIE_SAMESITE=lax                      # "none" (+HTTPS) if frontend/API cross-site
+# COOKIE_DOMAIN=.yourdomain.com
+TWO_FACTOR_ISSUER=Scriptory
+
+# Admin seed — blank = skip seeding
+ADMIN_EMAIL=
+ADMIN_PASSWORD=
+
+# Cloudinary
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
+
+# SMTP (optional — if unset, emails are logged & skipped; data still persists)
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_SECURE=false                        # true for port 465
+SMTP_USER=
+SMTP_PASS=
+MAIL_FROM=Scriptory <no-reply@scriptory.com>
+CONTACT_RECIPIENT=                       # defaults to ADMIN_EMAIL
+
+# Newsletter digest cron (opt-in — sends real email). Off by default.
+NEWSLETTER_DIGEST_ENABLED=false
+NEWSLETTER_DIGEST_CRON=0 9 * * 1         # node-cron expression (Mondays 09:00)
+
+# Related posts via Gemini embeddings (optional; falls back to shared tags without a key)
+GEMINI_API_KEY=
+EMBEDDING_MODEL=text-embedding-004
 ```
+
+> **Note:** `ADMIN_EMAIL` / `ADMIN_PASSWORD` are only used the **first time** the admin is seeded. Editing them later does **not** change the existing admin's password — use the in-app *Change password*, or reset it directly in the DB / via a one-off script.
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Start with nodemon (hot reload) |
-| `npm start` | Start production build |
+| `npm start` | Start production server |
 | `npm run prisma:migrate` | Create and apply a new migration |
 | `npm run prisma:deploy` | Apply migrations in production |
 | `npm run prisma:studio` | Open Prisma Studio GUI |
@@ -91,80 +135,111 @@ CLOUDINARY_API_SECRET=
 ### Auth
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/api/auth/register` | — | Register new user |
-| POST | `/api/auth/login` | — | Login, returns JWT |
+| POST | `/api/auth/register` | — | Register; sets httpOnly session cookie |
+| POST | `/api/auth/login` | — | Login with `email`, `password`, optional `totp`. Returns `401 { twoFactorRequired: true }` if 2FA is on and no code supplied |
+| POST | `/api/auth/logout` | — | Clears the session cookie |
+| POST | `/api/auth/change-password` | User | Change password; re-issues this session, revokes others |
+| POST | `/api/auth/2fa/setup` | User | Returns QR data-URL + secret (pending) |
+| POST | `/api/auth/2fa/enable` | User | Verify code, enable 2FA |
+| POST | `/api/auth/2fa/disable` | User | Verify code, disable 2FA |
+
+Sessions are carried by an **httpOnly cookie**; a `Bearer` header is also accepted for tooling. The JWT embeds `tokenVersion`, checked on every request so password/2FA changes revoke old sessions.
 
 ### Articles
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/api/articles` | — | List articles (paginated, filterable by tag/search) |
-| GET | `/api/articles/:slug` | — | Get single article by slug |
-| POST | `/api/articles` | Admin | Create article |
-| PUT | `/api/articles/:uuid` | Admin | Update article |
-| DELETE | `/api/articles/:uuid` | Admin | Delete article |
+| GET | `/api/articles` | — | List (paginated). `search` uses Postgres **full-text search** (title+excerpt+content, ranked); filter by `tag`. Lean payload |
+| GET | `/api/articles/:slug` | — | Single article by slug (includes `comments`, `series`, `publishAt`) |
+| GET | `/api/articles/:slug/related` | — | Related posts by embedding similarity → shared-tag fallback |
+| POST | `/api/articles` | Admin | Create — accepts `series`, `seriesOrder`, `publishAt` (future = scheduled draft). Audited |
+| PUT | `/api/articles/:uuid` | Admin | Update (audited) |
+| DELETE | `/api/articles/:uuid` | Admin | Delete (audited) |
 
-### Likes
+### Likes / Views / Comments / Bookmarks
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/api/articles/:slug/likes` | Optional | Get like count + liked status |
-| POST | `/api/articles/:slug/likes` | User | Toggle like |
+| GET/POST | `/api/articles/:slug/likes` | Optional/User | Like status / toggle |
+| POST | `/api/articles/:slug/views` | Optional | Increment unique view |
+| GET/POST/DELETE | `/api/articles/:slug/comments[/:uuid]` | —/User/Owner-Admin | List / post / delete |
+| GET/POST | `/api/articles/:slug/bookmark` | User | Bookmark status / toggle |
+| GET | `/api/bookmarks` | User | Current user's saved articles |
 
-### Views
+### Contact
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/api/articles/:slug/views` | Optional | Increment unique view count |
+| POST | `/api/contact` | — | Submit (persisted; emails owner + auto-reply). Honeypot + rate limited |
+| GET | `/api/contact` | Admin | List messages |
+| PATCH | `/api/contact/:uuid` | Admin | Set `{ handled: boolean }` |
+| DELETE | `/api/contact/:uuid` | Admin | Delete message |
 
-### Comments
+### Newsletter
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/api/articles/:slug/comments` | — | List comments |
-| POST | `/api/articles/:slug/comments` | User | Post comment |
-| DELETE | `/api/articles/:slug/comments/:uuid` | Owner/Admin | Delete comment |
+| POST | `/api/newsletter/subscribe` | — | Subscribe (persisted + welcome email) |
+| GET | `/api/newsletter/unsubscribe?token=` | — | Confirmation page (no state change) |
+| POST | `/api/newsletter/unsubscribe` | — | Perform unsubscribe |
+| GET | `/api/newsletter/subscribers` | Admin | List subscribers |
+| DELETE | `/api/newsletter/subscribers/:uuid` | Admin | Delete subscriber |
+| POST | `/api/newsletter/digest` | Admin | Send the recent-posts digest to all active subscribers |
 
-### Users
+### Users / Upload / Tags / Admin data
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/api/users/me` | User | Get current user + profile |
-| PATCH | `/api/users/me/profile` | User | Update name, bio, avatarUrl |
-
-### Upload
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/api/upload/cover` | Admin | Upload article cover (1200×630, Cloudinary) |
-| POST | `/api/upload/inline` | Admin | Upload inline article image |
-| POST | `/api/upload/avatar` | User | Upload profile avatar (200×200, face crop) |
-
-### Tags
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
+| GET/PATCH | `/api/users/me` · `me/profile` | User | Current user (incl. `twoFactorEnabled`) / update profile |
+| POST | `/api/upload/{cover,inline,avatar}` | Admin/User | Cloudinary uploads |
 | GET | `/api/tags` | — | List all tags |
+| GET | `/api/stats` | — | Public totals (articles / views / topics) |
+| GET | `/api/analytics` | Admin | Dashboard: totals, 30-day views, top posts |
+| GET | `/api/audit` | Admin | Recent security/admin activity |
+
+### Feeds & OG images (served at the root, not under `/api`)
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/rss.xml` | — | RSS 2.0 feed of published posts |
+| GET | `/sitemap.xml` | — | XML sitemap |
+| GET | `/robots.txt` | — | Robots + sitemap pointer |
+| GET | `/og/:slug.png` | — | Auto-generated 1200×630 branded OG image (sharp) |
+
+## Scheduled Jobs (`scheduler.js`, node-cron)
+
+- **Draft auto-publish** — every minute, flips `published=true` on drafts whose `publishAt` has passed.
+- **Newsletter digest** — opt-in (`NEWSLETTER_DIGEST_ENABLED=true`); emails recent posts to active subscribers on the `NEWSLETTER_DIGEST_CRON` schedule.
+
+Jobs run **in-process** on the event loop (non-blocking, async I/O). Run a **single instance** (or a dedicated worker) in production to avoid duplicate digest sends.
 
 ## Data Models
 
 ```
-User        — id, uuid, email, password, role (ADMIN|USER)
-Profile     — userId, name, bio, avatarUrl
-Article     — uuid, title, subtitle, slug, content, coverImage, published, readingTime
-Tag         — name (unique)
-TagOnArticle — articleId ↔ tagId
-Comment     — uuid, content, userId, articleId
-Like        — userId, articleId (unique pair)
-View        — articleId (aggregate count)
-ViewRecord  — articleId, fingerprint (unique per viewer per article)
+User         — uuid, email, password, role (ADMIN|USER),
+               tokenVersion, twoFactorEnabled, twoFactorSecret, twoFactorPending
+Profile      — userId, name, bio, avatarUrl
+Article      — uuid, title, subtitle, slug, content, coverImage, published, readingTime,
+               publishAt (scheduling), embedding (Json, related-posts), seriesId, seriesOrder
+Series       — uuid, title, slug, description  →  has many Article
+Tag          — name (unique)   ·   TagOnArticle — articleId ↔ tagId
+Comment      — uuid, content, userId, articleId
+Like         — userId, articleId (unique pair)
+Bookmark     — userId, articleId (unique pair)
+View         — articleId (aggregate)   ·   ViewRecord — articleId, fingerprint (unique per viewer)
+ContactMessage — uuid, name, email, message, ipHash, userAgent, handled
+Subscriber   — uuid, email (unique), status, unsubscribeToken
+AuditLog     — uuid, action, actorEmail, actorUuid, ip, detail, createdAt
 ```
 
 ## Security
 
-- Helmet sets secure HTTP headers
-- CORS restricted to `FRONTEND_URL`
-- Rate limiting: 100 req/15min globally, 10 req/15min on auth routes (production)
-- Passwords hashed with bcrypt (12 rounds)
-- JWT signed with `userUuid` payload — no numeric IDs exposed externally
-- All DB mutations use `uuid` as the external identifier
+- **httpOnly cookie sessions** — JWT not readable by JS; `SameSite=Lax`, `Secure` in production
+- **Token revocation** via `User.tokenVersion` embedded in the JWT (logout-everywhere on password/2FA change)
+- **TOTP 2FA** for accounts (otplib); secret stored server-side only
+- **Constant-time login** (bcrypt always runs) → no user enumeration
+- Password policy: min 8, letter + number (Joi); seed warns on weak `ADMIN_PASSWORD`
+- Helmet security headers; CORS restricted to `FRONTEND_URL` with credentials
+- Rate limiting: global on `/api`, tighter on `/auth` and public write endpoints (contact/subscribe, POST-only)
+- Passwords hashed with bcrypt (cost 12); `uuid` used as the external identifier
+- Email header-injection & HTML escaping on all user input; CSV-injection guard on exports
+- **Audit log** of auth events and article mutations
 
 ## Response Format
-
-All responses follow a consistent shape:
 
 ```json
 { "success": true, "message": "...", "data": { ... } }

@@ -8,17 +8,20 @@ import {
   contactApi,
   newsletterApi,
   auditApi,
+  analyticsApi,
   type AdminContactMessage,
   type AdminSubscriber,
   type AuditEntry,
+  type AnalyticsOverview,
 } from '../lib/api';
 import {
   Mail, Users, Inbox, RefreshCw, AlertCircle, Check, CircleCheck,
-  Trash2, Download, Loader2, Activity,
+  Trash2, Download, Loader2, Activity, LayoutDashboard, Eye, Heart,
+  MessageSquare, FileText, TrendingUp, Send,
 } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 
-type Tab = 'messages' | 'subscribers' | 'activity';
+type Tab = 'overview' | 'messages' | 'subscribers' | 'activity';
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -33,10 +36,11 @@ const csvCell = (value: string) => {
 
 export const Admin = () => {
   const shouldReduceMotion = useReducedMotion();
-  const [tab, setTab] = useState<Tab>('messages');
+  const [tab, setTab] = useState<Tab>('overview');
   const [messages, setMessages] = useState<AdminContactMessage[]>([]);
   const [subscribers, setSubscribers] = useState<AdminSubscriber[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [analytics, setAnalytics] = useState<AnalyticsOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -45,11 +49,12 @@ export const Admin = () => {
   const load = () => {
     setLoading(true);
     setError('');
-    Promise.all([contactApi.list(), newsletterApi.listSubscribers(), auditApi.list()])
-      .then(([m, s, a]) => {
+    Promise.all([contactApi.list(), newsletterApi.listSubscribers(), auditApi.list(), analyticsApi.overview()])
+      .then(([m, s, a, o]) => {
         setMessages(m);
         setSubscribers(s);
         setAudit(a);
+        setAnalytics(o);
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -123,7 +128,8 @@ export const Admin = () => {
   const activeSubscribers = subscribers.filter((s) => s.status === 'SUBSCRIBED').length;
   const unhandledCount = messages.filter((m) => !m.handled).length;
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode; count: number }[] = [
+  const tabs: { key: Tab; label: string; icon: React.ReactNode; count: number | null }[] = [
+    { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" />, count: null },
     { key: 'messages', label: 'Messages', icon: <Mail className="h-4 w-4" />, count: messages.length },
     { key: 'subscribers', label: 'Subscribers', icon: <Users className="h-4 w-4" />, count: subscribers.length },
     { key: 'activity', label: 'Activity', icon: <Activity className="h-4 w-4" />, count: audit.length },
@@ -168,13 +174,15 @@ export const Admin = () => {
                 >
                   {t.icon}
                   {t.label}
-                  <span
-                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                      active ? 'bg-black/20 text-brand-foreground' : 'bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    {t.count}
-                  </span>
+                  {t.count !== null && (
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                        active ? 'bg-black/20 text-brand-foreground' : 'bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      {t.count}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -204,7 +212,9 @@ export const Admin = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: shouldReduceMotion ? 0 : 0.25 }}
             >
-              {tab === 'messages' ? (
+              {tab === 'overview' ? (
+                <OverviewPanel data={analytics} />
+              ) : tab === 'messages' ? (
                 <MessagesList
                   messages={messages}
                   unhandledCount={unhandledCount}
@@ -344,22 +354,50 @@ const SubscribersList = ({
   subscribers, activeCount, busyId, confirmId,
   onExport, onRequestDelete, onConfirmDelete,
 }: SubscribersListProps) => {
+  const [digestBusy, setDigestBusy] = useState(false);
+  const [digestMsg, setDigestMsg] = useState('');
+
+  const sendDigest = async () => {
+    if (!window.confirm('Send the latest-posts digest email to all active subscribers?')) return;
+    setDigestBusy(true);
+    setDigestMsg('');
+    try {
+      const r = await newsletterApi.sendDigest();
+      setDigestMsg(r.message);
+    } catch (err: unknown) {
+      setDigestMsg(err instanceof Error ? err.message : 'Failed to send digest');
+    } finally {
+      setDigestBusy(false);
+    }
+  };
+
   if (subscribers.length === 0) {
     return <EmptyState icon={<Users className="h-5 w-5" />} text="No subscribers yet." />;
   }
   return (
     <div className="card-premium overflow-hidden rounded-2xl">
-      <div className="flex items-center justify-between border-b border-border px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
         <span className="text-xs font-medium text-muted-foreground">
           {subscribers.length} total · {activeCount} active
+          {digestMsg && <span className="ml-2 text-green-600 dark:text-green-400">· {digestMsg}</span>}
         </span>
-        <button
-          onClick={onExport}
-          className="flex items-center gap-1.5 rounded-full bg-brand px-3.5 py-1.5 text-xs font-semibold text-brand-foreground shadow-sm shadow-brand/25 transition-all hover:brightness-110 active:scale-95"
-        >
-          <Download className="h-3.5 w-3.5" />
-          Export CSV
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={sendDigest}
+            disabled={digestBusy}
+            className="flex items-center gap-1.5 rounded-full border border-border bg-background/40 px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition-all hover:border-brand/40 hover:text-foreground disabled:opacity-50"
+          >
+            {digestBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+            Send digest
+          </button>
+          <button
+            onClick={onExport}
+            className="flex items-center gap-1.5 rounded-full bg-brand px-3.5 py-1.5 text-xs font-semibold text-brand-foreground shadow-sm shadow-brand/25 transition-all hover:brightness-110 active:scale-95"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export CSV
+          </button>
+        </div>
       </div>
       <ul className="divide-y divide-border">
         {subscribers.map((s) => {
@@ -403,6 +441,85 @@ const SubscribersList = ({
           );
         })}
       </ul>
+    </div>
+  );
+};
+
+const StatTile = ({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) => (
+  <div className="card-premium rounded-2xl p-4">
+    <div className="flex items-center gap-1.5 text-muted-foreground">
+      <span className="text-brand">{icon}</span>
+      <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
+    </div>
+    <p className="mt-1.5 font-display text-2xl font-bold tracking-tight">{value.toLocaleString()}</p>
+  </div>
+);
+
+const OverviewPanel = ({ data }: { data: AnalyticsOverview | null }) => {
+  if (!data) {
+    return <EmptyState icon={<LayoutDashboard className="h-5 w-5" />} text="No analytics available." />;
+  }
+  const { totals, topArticles, viewsByDay } = data;
+  const maxV = Math.max(1, ...viewsByDay.map((d) => d.count));
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <StatTile icon={<FileText className="h-4 w-4" />} label="Articles" value={totals.articles} />
+        <StatTile icon={<Eye className="h-4 w-4" />} label="Views" value={totals.views} />
+        <StatTile icon={<Heart className="h-4 w-4" />} label="Likes" value={totals.likes} />
+        <StatTile icon={<MessageSquare className="h-4 w-4" />} label="Comments" value={totals.comments} />
+        <StatTile icon={<Users className="h-4 w-4" />} label="Subscribers" value={totals.activeSubscribers} />
+        <StatTile icon={<FileText className="h-4 w-4" />} label="Drafts" value={totals.drafts} />
+      </div>
+
+      <div className="card-premium rounded-2xl p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-brand" />
+          <h3 className="font-semibold">Views · last 30 days</h3>
+        </div>
+        {viewsByDay.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No views recorded yet.</p>
+        ) : (
+          <div className="flex h-32 items-end gap-1">
+            {viewsByDay.map((d) => (
+              <div
+                key={d.date}
+                className="group relative flex-1"
+                title={`${d.date}: ${d.count} view${d.count === 1 ? '' : 's'}`}
+              >
+                <div
+                  className="w-full rounded-t bg-brand/70 transition-colors group-hover:bg-brand"
+                  style={{ height: `${Math.max(4, (d.count / maxV) * 100)}%` }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="card-premium overflow-hidden rounded-2xl">
+        <div className="border-b border-border px-5 py-3 text-xs font-medium text-muted-foreground">
+          Top articles by views
+        </div>
+        {topArticles.length === 0 ? (
+          <p className="p-5 text-sm text-muted-foreground">No articles yet.</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {topArticles.map((a, i) => (
+              <li key={a.slug} className="flex items-center justify-between gap-3 px-5 py-3">
+                <a href={`/articles/${a.slug}`} className="flex min-w-0 items-center gap-3 text-sm font-medium transition-colors hover:text-brand">
+                  <span className="text-muted-foreground">{i + 1}</span>
+                  <span className="truncate">{a.title}</span>
+                </a>
+                <span className="flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground">
+                  <Eye className="h-3.5 w-3.5" />{a.views.toLocaleString()}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 };

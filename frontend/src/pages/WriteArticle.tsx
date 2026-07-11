@@ -1,6 +1,8 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { articlesApi, uploadApi, type ArticlePayload, type ApiArticle } from '../lib/api';
 import { clearCache } from '../lib/cache';
 import { Container } from '../components/ui/Container';
@@ -11,6 +13,7 @@ import { ImageUpload } from '../components/ui/ImageUpload';
 import {
   Bold, Italic, Code, Link2, ImagePlus, List, ListOrdered,
   Heading2, Heading3, Quote, Minus, Eye, EyeOff, X, Plus, Loader2,
+  Info, ChevronDown, Workflow,
 } from 'lucide-react';
 
 const ToolBtn = ({
@@ -61,23 +64,46 @@ function insertAtCursor(ta: HTMLTextAreaElement, text: string) {
   return { next, cursor: s + text.length };
 }
 
+// Full CommonMark + GFM (headings, nested lists, tables, fenced code blocks,
+// blockquotes, task lists, etc.), then sanitized before it's ever rendered.
+marked.setOptions({ gfm: true, breaks: false });
+
+const CALLOUT_LABELS: Record<string, string> = {
+  note: 'Note', tip: 'Tip', warning: 'Warning', important: 'Important', caution: 'Caution',
+};
+
+// GitHub-style alert blocks:  > [!NOTE] / [!TIP] / [!WARNING] / [!IMPORTANT] / [!CAUTION]
+const calloutExtension = {
+  name: 'callout',
+  level: 'block' as const,
+  start(src: string) {
+    const m = src.match(/^>\s*\[!/m);
+    return m ? m.index : undefined;
+  },
+  tokenizer(this: any, src: string) {
+    const rule = /^(> *\[!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\][^\n]*\n(?:> ?[^\n]*\n?)*)/i;
+    const match = rule.exec(src);
+    if (!match) return undefined;
+    const type = match[2].toLowerCase();
+    const inner = match[1]
+      .replace(/^> *\[![^\]]+\][^\n]*\n/, '')
+      .replace(/^> ?/gm, '')
+      .trim();
+    const tokens = this.lexer.blockTokens(inner, []);
+    return { type: 'callout', raw: match[1], calloutType: type, tokens };
+  },
+  renderer(this: any, token: any) {
+    const body = this.parser.parse(token.tokens);
+    return `<div class="callout callout-${token.calloutType}"><p class="callout-title">${CALLOUT_LABELS[token.calloutType]}</p>${body}</div>`;
+  },
+};
+
+marked.use({ extensions: [calloutExtension] });
+
 function mdToHtml(md: string): string {
-  return md
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/_(.+?)_/g, '<em>$1</em>')
-    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
-    .replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>')
-    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-    .replace(/^---$/gm, '<hr />')
-    .replace(/\n\n/g, '</p><p>');
+  const raw = marked.parse(md, { async: false }) as string;
+  // Allow <details>/<summary> (collapsibles) + callout classes through the sanitizer.
+  return DOMPurify.sanitize(raw, { ADD_ATTR: ['target', 'rel', 'open'], ADD_TAGS: ['details', 'summary'] });
 }
 
 export const WriteArticle = () => {
@@ -95,6 +121,9 @@ export const WriteArticle = () => {
   const [coverImage, setCoverImage] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
+  const [series, setSeries] = useState('');
+  const [seriesOrder, setSeriesOrder] = useState('');
+  const [publishAt, setPublishAt] = useState('');
   const [content, setContent] = useState('');
   const [preview, setPreview] = useState(false);
   const [published, setPublished] = useState(true);
@@ -123,6 +152,14 @@ export const WriteArticle = () => {
     setTags(editArticle.tags);
     setPublished(editArticle.published);
     setContent(editArticle.content);
+    setSeries(editArticle.series?.title || '');
+    setSeriesOrder(editArticle.series?.order ? String(editArticle.series.order) : '');
+    // ISO → datetime-local ("YYYY-MM-DDTHH:mm") in local time
+    if (editArticle.publishAt) {
+      const d = new Date(editArticle.publishAt);
+      const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+      setPublishAt(local.toISOString().slice(0, 16));
+    }
   }, [editArticle]);
 
   const addTag = () => {
@@ -176,6 +213,9 @@ export const WriteArticle = () => {
     { icon: <ListOrdered size={15} />, title: 'Numbered list', action: (ta: HTMLTextAreaElement) => insertLine(ta, '1. ') },
     { icon: <Link2 size={15} />, title: 'Link', action: (ta: HTMLTextAreaElement) => wrapSelection(ta, '[', '](url)') },
     { icon: <Minus size={15} />, title: 'Divider', action: (ta: HTMLTextAreaElement) => insertAtCursor(ta, '\n\n---\n\n') },
+    { icon: <Info size={15} />, title: 'Callout', action: (ta: HTMLTextAreaElement) => insertAtCursor(ta, '\n\n> [!NOTE]\n> Your note here.\n\n') },
+    { icon: <ChevronDown size={15} />, title: 'Collapsible', action: (ta: HTMLTextAreaElement) => insertAtCursor(ta, '\n\n<details>\n<summary>Click to expand</summary>\n\nHidden content here.\n\n</details>\n\n') },
+    { icon: <Workflow size={15} />, title: 'Diagram (Mermaid)', action: (ta: HTMLTextAreaElement) => insertAtCursor(ta, '\n\n```mermaid\ngraph TD\n  A[Start] --> B[End]\n```\n\n') },
   ];
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -196,6 +236,9 @@ export const WriteArticle = () => {
         coverImage: editArticle ? (coverImage || null) : (coverImage || undefined),
         published,
         tags,
+        series: series.trim() || null,
+        seriesOrder: series.trim() && seriesOrder ? Number(seriesOrder) : null,
+        publishAt: publishAt ? new Date(publishAt).toISOString() : null,
       };
       let article: ApiArticle;
       if (editArticle) {
@@ -348,6 +391,54 @@ export const WriteArticle = () => {
                       <Plus size={14} />
                     </Button>
                   </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-muted-foreground">
+                    Series <span className="font-normal">(optional)</span>
+                  </label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      placeholder="Series name, e.g. Distributed Systems"
+                      value={series}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSeries(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      min={1}
+                      placeholder="Part #"
+                      value={seriesOrder}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSeriesOrder(e.target.value)}
+                      className="sm:max-w-[110px]"
+                      disabled={!series.trim()}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Group related posts. Same series name = same collection; the part number orders them.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-muted-foreground">
+                    Schedule publish <span className="font-normal">(optional)</span>
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      type="datetime-local"
+                      value={publishAt}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPublishAt(e.target.value)}
+                      className="max-w-[240px]"
+                    />
+                    {publishAt && (
+                      <button type="button" onClick={() => setPublishAt('')} className="text-xs text-muted-foreground hover:text-foreground">
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Set a future time to auto-publish later — the post stays a draft until then.
+                  </p>
                 </div>
 
                 <hr className="border-border" />

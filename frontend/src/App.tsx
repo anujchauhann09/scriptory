@@ -11,6 +11,7 @@ import { NotFound } from './pages/NotFound';
 
 // secondary / admin routes — code-split so the core reading experience loads first
 const About = lazy(() => import('./pages/About').then((m) => ({ default: m.About })));
+const Author = lazy(() => import('./pages/Author').then((m) => ({ default: m.Author })));
 const Contact = lazy(() => import('./pages/Contact').then((m) => ({ default: m.Contact })));
 const Login = lazy(() => import('./pages/Login').then((m) => ({ default: m.Login })));
 const Profile = lazy(() => import('./pages/Profile').then((m) => ({ default: m.Profile })));
@@ -52,6 +53,7 @@ export default function App() {
                 <Route path="/articles" element={<Articles />} />
                 <Route path="/articles/:slug" element={<ArticleDetail />} />
                 <Route path="/about" element={<About />} />
+                <Route path="/author" element={<Author />} />
                 <Route path="/contact" element={<Contact />} />
                 <Route path="/login" element={<Login />} />
                 <Route

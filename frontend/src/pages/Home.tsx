@@ -6,18 +6,32 @@ import { Button } from '../components/ui/Button';
 import { ArticleCard } from '../components/ui/ArticleCard';
 import { ArticleCardSkeleton } from '../components/ui/Skeleton';
 import { Badge } from '../components/ui/Badge';
-import { articlesApi, type ApiArticle } from '../lib/api';
+import { Reveal } from '../components/ui/Reveal';
+import { SmartImage } from '../components/ui/SmartImage';
+import { articlesApi, statsApi, type ApiArticle, type SiteStats } from '../lib/api';
 import { getCache, setCache } from '../lib/cache';
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowRight, Sparkles } from 'lucide-react';
 
 const HOME_CACHE_KEY = 'home:articles';
 
+const compact = (n: number) =>
+  n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : `${n}`;
+
 export const Home = () => {
   const cached = getCache<ApiArticle[]>(HOME_CACHE_KEY);
   const [articles, setArticles] = useState<ApiArticle[]>(cached ?? []);
   const [loading, setLoading] = useState(!cached);
+  const [stats, setStats] = useState<SiteStats | null>(() => getCache<SiteStats>('home:stats') ?? null);
   const shouldReduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    let cancelled = false;
+    statsApi.get()
+      .then((s) => { if (!cancelled) { setStats(s); setCache('home:stats', s); } })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +100,25 @@ export const Home = () => {
               <Button size="lg" variant="outline">About the author</Button>
             </Link>
           </motion.div>
+
+          {stats && (stats.articles > 0 || stats.views > 0) && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: shouldReduceMotion ? 0 : 0.5, delay: shouldReduceMotion ? 0 : 0.35 }}
+              className="mt-12 flex items-center gap-3 text-sm text-muted-foreground"
+            >
+              <span><span className="font-bold text-brand">{compact(stats.articles)}</span> articles</span>
+              <span className="text-brand/40">·</span>
+              <span><span className="font-bold text-brand">{compact(stats.views)}</span> views</span>
+              {stats.topics > 0 && (
+                <>
+                  <span className="text-brand/40">·</span>
+                  <span><span className="font-bold text-brand">{compact(stats.topics)}</span> topics</span>
+                </>
+              )}
+            </motion.div>
+          )}
         </Container>
       </Section>
 
@@ -96,12 +129,13 @@ export const Home = () => {
               <Sparkles className="h-4 w-4 text-brand" />
               <h2 className="text-xs font-bold uppercase tracking-widest text-brand">Featured Story</h2>
             </div>
-            <div className="group card-premium relative grid overflow-hidden rounded-3xl md:grid-cols-2">
+            <Reveal className="group card-premium relative grid overflow-hidden rounded-3xl md:grid-cols-2">
               <div className="aspect-video overflow-hidden md:aspect-auto">
-                <img
+                <SmartImage
                   src={featuredArticle.coverImage || '/placeholder.png'}
                   alt={featuredArticle.title}
-                  className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+                  sizes="(max-width: 768px) 100vw, 600px"
+                  className="h-full transition-transform duration-700 ease-out group-hover:scale-105"
                 />
               </div>
               <div className="flex flex-col justify-center p-7 md:p-10">
@@ -138,7 +172,7 @@ export const Home = () => {
                   </span>
                 </div>
               </div>
-            </div>
+            </Reveal>
           </Container>
         </Section>
       )}
@@ -174,7 +208,7 @@ export const Home = () => {
 
       <Section>
         <Container>
-          <div className="glass relative overflow-hidden rounded-3xl px-6 py-16 text-center sm:px-12">
+          <Reveal className="glass relative overflow-hidden rounded-3xl px-6 py-16 text-center sm:px-12">
             <div className="pointer-events-none absolute -top-24 left-1/2 h-64 w-[36rem] max-w-full -translate-x-1/2 rounded-full bg-brand/20 blur-[100px]" />
             <div className="relative">
               <h2 className="mb-4 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
@@ -190,7 +224,7 @@ export const Home = () => {
                 </button>
               </Link>
             </div>
-          </div>
+          </Reveal>
         </Container>
       </Section>
     </>

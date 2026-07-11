@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Container } from '../components/ui/Container';
 import { Section } from '../components/ui/Section';
 import { Input } from '../components/ui/Input';
@@ -12,11 +13,18 @@ import { AnimatePresence } from 'motion/react';
 import { Button } from '../components/ui/Button';
 
 export const Articles = () => {
+  const [params] = useSearchParams();
   const [articles, setArticles] = useState<ApiArticle[]>([]);
   const [tags, setTags] = useState<ApiTag[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState(params.get('search') || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(params.get('search') || '');
+  const [selectedTag, setSelectedTag] = useState<string | null>(params.get('tag'));
+
+  // Sync filters from the URL (e.g. command-palette jumps, deep links).
+  useEffect(() => {
+    setSelectedTag(params.get('tag'));
+    setSearchQuery(params.get('search') || '');
+  }, [params]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);

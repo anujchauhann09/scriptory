@@ -2,6 +2,7 @@ require("./config/env");
 const app = require("./app");
 const prisma = require("./config/db");
 const logger = require("./utils/logger");
+const { startScheduler } = require("./scheduler");
 
 const PORT = process.env.PORT || 5000;
 
@@ -12,6 +13,7 @@ const start = async () => {
 
     app.listen(PORT, () => {
       logger.info(`Scriptory API running on port ${PORT} [${process.env.NODE_ENV}]`);
+      startScheduler();
     });
   } catch (err) {
     logger.error("Failed to start server:", err);

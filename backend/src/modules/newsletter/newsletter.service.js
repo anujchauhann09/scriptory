@@ -111,6 +111,55 @@ const deleteSubscriber = async (uuid) => {
   await prisma.subscriber.delete({ where: { uuid } });
 };
 
+// Broadcast recent posts to every active subscriber. Called by the weekly cron
+// and by the admin "Send digest" action.
+const sendDigest = async ({ sinceDays = 7, max = 8 } = {}) => {
+  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+  const articles = await prisma.article.findMany({
+    where: { published: true, createdAt: { gte: since } },
+    orderBy: { createdAt: "desc" },
+    take: max,
+    select: { title: true, slug: true, excerpt: true },
+  });
+  if (articles.length === 0) return { sent: 0, total: 0, message: "No new posts in the window" };
+
+  const subs = await prisma.subscriber.findMany({
+    where: { status: "SUBSCRIBED" },
+    select: { email: true, unsubscribeToken: true },
+  });
+  if (subs.length === 0) return { sent: 0, total: 0, message: "No active subscribers" };
+
+  const listHtml = articles
+    .map(
+      (a) =>
+        `<p style="margin:0 0 16px">
+          <a href="${config.frontendUrl}/articles/${a.slug}" style="color:#0a0a0a;font-weight:700;font-size:17px;text-decoration:none">${escapeHtml(a.title)}</a>
+          <br/><span style="color:#71717a;font-size:14px">${escapeHtml(a.excerpt || "")}</span>
+        </p>`
+    )
+    .join("");
+  const textList = articles.map((a) => `• ${a.title}\n  ${config.frontendUrl}/articles/${a.slug}`).join("\n\n");
+
+  let sent = 0;
+  for (const sub of subs) {
+    const unsubscribeUrl = `${config.apiUrl}/api/newsletter/unsubscribe?token=${sub.unsubscribeToken}`;
+    const result = await sendMail({
+      to: sub.email,
+      subject: `Fresh from Scriptory — ${articles.length} new post${articles.length === 1 ? "" : "s"}`,
+      text: `New on Scriptory:\n\n${textList}\n\nUnsubscribe: ${unsubscribeUrl}`,
+      html: renderEmail({
+        preheader: `${articles.length} new post${articles.length === 1 ? "" : "s"} on Scriptory`,
+        heading: "Fresh from Scriptory",
+        bodyHtml: `<p style="margin:0 0 18px">Here's what's new since last time:</p>${listHtml}`,
+        cta: { label: "Read on Scriptory", url: `${config.frontendUrl}/articles` },
+        footerNote: `You're receiving this because you subscribed at Scriptory. <a href="${unsubscribeUrl}" style="color:#9a9aa2;text-decoration:underline;">Unsubscribe</a>.`,
+      }),
+    });
+    if (result.sent) sent++;
+  }
+  return { sent, total: subs.length, message: `Digest sent to ${sent}/${subs.length} subscribers` };
+};
+
 const listSubscribers = async () =>
   prisma.subscriber.findMany({
     orderBy: { createdAt: "desc" },
@@ -118,4 +167,4 @@ const listSubscribers = async () =>
     select: { uuid: true, email: true, status: true, createdAt: true },
   });
 
-module.exports = { subscribe, unsubscribe, findByToken, listSubscribers, deleteSubscriber };
+module.exports = { subscribe, unsubscribe, findByToken, listSubscribers, deleteSubscriber, sendDigest };

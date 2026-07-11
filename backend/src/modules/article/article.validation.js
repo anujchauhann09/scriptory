@@ -8,6 +8,9 @@ const createArticleSchema = Joi.object({
   coverImage: Joi.string().uri().optional().allow(""),
   published: Joi.boolean().optional(),
   tags: Joi.array().items(Joi.string().max(50)).optional(),
+  series: Joi.string().max(120).optional().allow("", null),
+  seriesOrder: Joi.number().integer().min(1).optional().allow(null),
+  publishAt: Joi.date().iso().optional().allow(null),
 });
 
 const updateArticleSchema = Joi.object({
@@ -18,6 +21,9 @@ const updateArticleSchema = Joi.object({
   coverImage: Joi.string().uri().optional().allow("", null),
   published: Joi.boolean().optional(),
   tags: Joi.array().items(Joi.string().max(50)).optional(),
+  series: Joi.string().max(120).optional().allow("", null),
+  seriesOrder: Joi.number().integer().min(1).optional().allow(null),
+  publishAt: Joi.date().iso().optional().allow(null),
 });
 
 const listArticlesSchema = Joi.object({

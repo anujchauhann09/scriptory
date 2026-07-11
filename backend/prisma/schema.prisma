@@ -38,6 +38,7 @@ model User {
   articles  Article[]
   comments  Comment[]
   likes     Like[]
+  bookmarks Bookmark[]
 
   @@index([createdAt])
 }
@@ -76,6 +77,8 @@ model Article {
   content    String
   coverImage String?
   published  Boolean  @default(true)
+  publishAt  DateTime?  // when set in the future, a cron auto-publishes it
+  embedding  Json?      // content-similarity vector for "related posts"
   readingTime Int?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -85,11 +88,41 @@ model Article {
   comments   Comment[]
   views      View?
   likes      Like[]
+  bookmarks  Bookmark[]
+
+  // Optional membership in a multi-part series
+  seriesId    Int?
+  seriesOrder Int?
+  series      Series?  @relation(fields: [seriesId], references: [id], onDelete: SetNull)
 
   @@index([authorId])
   @@index([createdAt])
   @@index([published])
   @@index([authorId, createdAt])
+  @@index([seriesId])
+}
+
+model Bookmark {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  articleId Int
+  createdAt DateTime @default(now())
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+  @@index([userId])
+  @@index([articleId])
+}
+
+model Series {
+  id          Int      @id @default(autoincrement())
+  uuid        String   @unique @default(uuid())
+  title       String
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  articles    Article[]
 }
 
 model Tag {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { Menu, X, Sun, Moon, PenLine, LogOut, LogIn, User, Inbox } from 'lucide-react';
+import { Menu, X, Sun, Moon, PenLine, LogOut, LogIn, User, Inbox, Search } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { Container } from '../ui/Container';
@@ -179,6 +179,15 @@ export const Navbar = () => {
               Write
             </Link>
           )}
+
+          <button
+            onClick={() => window.dispatchEvent(new Event('open-command-palette'))}
+            className="hidden items-center gap-2 rounded-full border border-border bg-background/40 py-1.5 pl-3 pr-2 text-sm text-muted-foreground transition-colors hover:border-brand/40 hover:text-foreground lg:flex"
+            aria-label="Search (Command K)"
+          >
+            <Search className="h-3.5 w-3.5" />
+            <kbd className="rounded border border-border px-1.5 text-[10px] font-medium">⌘K</kbd>
+          </button>
 
           <Button variant="ghost" size="sm" onClick={toggleTheme} className="h-9 w-9 rounded-full px-0" aria-label="Toggle theme">
             {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

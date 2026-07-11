@@ -28,6 +28,15 @@ const getArticle = async (req, res, next) => {
   }
 };
 
+const getRelated = async (req, res, next) => {
+  try {
+    const related = await articleService.getRelated(req.params.slug);
+    return sendSuccess(res, 200, "Related articles", related);
+  } catch (err) {
+    next(err);
+  }
+};
+
 const createArticle = async (req, res, next) => {
   try {
     const { error, value } = createArticleSchema.validate(req.body, { abortEarly: false });
@@ -66,4 +75,4 @@ const deleteArticle = async (req, res, next) => {
   }
 };
 
-module.exports = { listArticles, getArticle, createArticle, updateArticleByUuid: updateArticle, deleteArticleByUuid: deleteArticle };
+module.exports = { listArticles, getArticle, getRelated, createArticle, updateArticleByUuid: updateArticle, deleteArticleByUuid: deleteArticle };

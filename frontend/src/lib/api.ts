@@ -37,6 +37,7 @@ export interface ApiArticle {
   readingTime?: number;
   createdAt: string;
   updatedAt: string;
+  publishAt?: string | null;
   viewCount: number;
   tags: string[];
   author: {
@@ -45,6 +46,12 @@ export interface ApiArticle {
   };
   // Present on the article-detail response (GET /articles/:slug), omitted from list.
   comments?: ApiComment[];
+  series?: {
+    title: string;
+    slug: string;
+    order: number | null;
+    articles: { title: string; slug: string; order: number | null }[];
+  } | null;
 }
 
 export interface PaginatedArticles {
@@ -60,6 +67,9 @@ export interface ArticlePayload {
   coverImage?: string | null;
   published?: boolean;
   tags?: string[];
+  series?: string | null;
+  seriesOrder?: number | null;
+  publishAt?: string | null;
 }
 
 export const articlesApi = {
@@ -68,6 +78,7 @@ export const articlesApi = {
     return request<PaginatedArticles>(`/articles${qs}`);
   },
   get: (slug: string) => request<ApiArticle>(`/articles/${slug}`),
+  related: (slug: string) => request<ApiArticle[]>(`/articles/${slug}/related`),
   create: (data: ArticlePayload) =>
     request<ApiArticle>('/articles', { method: 'POST', body: JSON.stringify(data) }),
   update: (uuid: string, data: Partial<ArticlePayload>) =>
@@ -108,6 +119,19 @@ export const likesApi = {
 
 export const tagsApi = {
   list: () => request<ApiTag[]>('/tags'),
+};
+
+export interface SiteStats { articles: number; views: number; topics: number }
+
+export const statsApi = {
+  get: () => request<SiteStats>('/stats'),
+};
+
+export const bookmarksApi = {
+  status: (slug: string) => request<{ bookmarked: boolean }>(`/articles/${slug}/bookmark`),
+  toggle: (slug: string) =>
+    request<{ bookmarked: boolean }>(`/articles/${slug}/bookmark`, { method: 'POST' }),
+  list: () => request<ApiArticle[]>('/bookmarks'),
 };
 
 export interface UploadResult { url: string; publicId: string }
@@ -178,6 +202,8 @@ export const newsletterApi = {
   listSubscribers: () => request<AdminSubscriber[]>('/newsletter/subscribers'),
   removeSubscriber: (uuid: string) =>
     request<null>(`/newsletter/subscribers/${uuid}`, { method: 'DELETE' }),
+  sendDigest: () =>
+    request<{ sent: number; total: number; message: string }>('/newsletter/digest', { method: 'POST' }),
 };
 
 export interface UserProfile { name?: string | null; bio?: string | null; avatarUrl?: string | null }
@@ -258,4 +284,18 @@ export interface AuditEntry {
 
 export const auditApi = {
   list: () => request<AuditEntry[]>('/audit'),
+};
+
+export interface AnalyticsOverview {
+  totals: {
+    articles: number; published: number; drafts: number;
+    views: number; likes: number; comments: number;
+    subscribers: number; activeSubscribers: number;
+  };
+  topArticles: { title: string; slug: string; views: number }[];
+  viewsByDay: { date: string; count: number }[];
+}
+
+export const analyticsApi = {
+  overview: () => request<AnalyticsOverview>('/analytics'),
 };

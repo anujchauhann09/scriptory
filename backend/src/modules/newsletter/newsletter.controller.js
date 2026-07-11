@@ -111,6 +111,15 @@ const list = async (req, res, next) => {
   }
 };
 
+const digest = async (req, res, next) => {
+  try {
+    const result = await newsletterService.sendDigest();
+    return sendSuccess(res, 200, result.message, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 const remove = async (req, res, next) => {
   try {
     await newsletterService.deleteSubscriber(req.params.uuid);
@@ -120,4 +129,4 @@ const remove = async (req, res, next) => {
   }
 };
 
-module.exports = { subscribe, unsubscribeConfirm, unsubscribe, list, remove };
+module.exports = { subscribe, unsubscribeConfirm, unsubscribe, list, remove, digest };

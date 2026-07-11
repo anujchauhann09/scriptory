@@ -13,5 +13,6 @@ router.post("/unsubscribe", newsletterController.unsubscribe);
 // ADMIN ONLY
 router.get("/subscribers", authMiddleware, adminMiddleware, newsletterController.list);
 router.delete("/subscribers/:uuid", authMiddleware, adminMiddleware, newsletterController.remove);
+router.post("/digest", authMiddleware, adminMiddleware, newsletterController.digest);
 
 module.exports = router;

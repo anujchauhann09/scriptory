@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useAuth } from '../context/AuthContext';
 import { userApi, uploadApi } from '../lib/api';
@@ -6,7 +6,10 @@ import { Container } from '../components/ui/Container';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { SecuritySettings } from '../components/SecuritySettings';
-import { Camera, Loader2 } from 'lucide-react';
+import { ArticleCard } from '../components/ui/ArticleCard';
+import { ArticleCardSkeleton } from '../components/ui/Skeleton';
+import { bookmarksApi, type ApiArticle } from '../lib/api';
+import { Camera, Loader2, Bookmark } from 'lucide-react';
 
 export const Profile = () => {
   const { user, updateProfile } = useAuth();
@@ -154,7 +157,47 @@ export const Profile = () => {
         </form>
 
         <SecuritySettings />
+        <SavedArticles />
       </Container>
     </>
+  );
+};
+
+const SavedArticles = () => {
+  const [articles, setArticles] = useState<ApiArticle[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    bookmarksApi
+      .list()
+      .then((a) => { if (!cancelled) setArticles(a); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <div className="mt-12">
+      <h2 className="mb-6 flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+        <Bookmark className="h-5 w-5 text-brand" /> Saved articles
+      </h2>
+      {loading ? (
+        <div className="grid gap-6 sm:grid-cols-2">
+          <ArticleCardSkeleton />
+          <ArticleCardSkeleton />
+        </div>
+      ) : articles.length === 0 ? (
+        <div className="glass rounded-2xl p-8 text-center text-sm text-muted-foreground">
+          No saved articles yet. Tap <span className="font-medium text-foreground">Save</span> on any article to read it later.
+        </div>
+      ) : (
+        <div className="grid gap-6 sm:grid-cols-2">
+          {articles.map((a, i) => (
+            <ArticleCard key={a.uuid} article={a} index={i} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 };

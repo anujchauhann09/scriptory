@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
+import { CommandPalette } from '../CommandPalette';
 import { useLocation } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 
@@ -27,6 +28,7 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
         </AnimatePresence>
         <Footer />
       </div>
+      <CommandPalette />
     </div>
   );
 };

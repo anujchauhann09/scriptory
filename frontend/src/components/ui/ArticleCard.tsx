@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
 import { Badge } from '../ui/Badge';
+import { SmartImage } from '../ui/SmartImage';
 import { type ApiArticle } from '../../lib/api';
 
 interface ArticleCardProps {
@@ -31,10 +32,11 @@ export const ArticleCard = ({ article, index }: ArticleCardProps) => {
         {imgError || !article.coverImage ? (
           <div className="h-full w-full bg-gradient-to-br from-muted via-muted to-brand/10" />
         ) : (
-          <img
+          <SmartImage
             src={article.coverImage}
             alt={article.title}
-            className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 400px"
+            className="transition-transform duration-700 ease-out group-hover:scale-105"
             onError={() => setImgError(true)}
           />
         )}

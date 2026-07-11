@@ -7,6 +7,7 @@ const router = Router();
 
 // PUBLIC
 router.get("/", articleController.listArticles);
+router.get("/:slug/related", articleController.getRelated);
 router.get("/:slug", articleController.getArticle);
 
 // ADMIN ONLY
