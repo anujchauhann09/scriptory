@@ -67,10 +67,11 @@ export const Profile = () => {
     <>
       <Helmet><title>Profile | Scriptory</title></Helmet>
 
-      <Container className="max-w-lg py-12">
-        <h1 className="mb-8 text-2xl font-bold">Your profile</h1>
+      <Container className="max-w-lg py-16">
+        <span className="text-xs font-bold uppercase tracking-widest text-brand">Account</span>
+        <h1 className="mb-8 mt-2 font-display text-3xl font-extrabold tracking-tight">Your profile</h1>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="glass space-y-6 rounded-3xl p-6 shadow-lg shadow-black/5 sm:p-8">
           <div className="flex flex-col items-center gap-4">
             <div className="relative">
               {avatarUrl ? (
@@ -131,7 +132,7 @@ export const Profile = () => {
                 placeholder="Tell us a bit about yourself…"
                 rows={4}
                 maxLength={500}
-                className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-brand/50"
               />
               <p className="mt-1 text-right text-xs text-muted-foreground">{bio.length}/500</p>
             </div>
@@ -146,7 +147,7 @@ export const Profile = () => {
             </p>
           )}
 
-          <Button type="submit" disabled={saving || avatarUploading} className="w-full">
+          <Button type="submit" variant="brand" disabled={saving || avatarUploading} className="w-full">
             {saving ? 'Saving…' : 'Save profile'}
           </Button>
         </form>

@@ -66,13 +66,13 @@ const UserMenu = () => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.97 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 top-10 z-50 min-w-[200px] rounded-xl border bg-card p-1 shadow-lg"
+            className="glass absolute right-0 top-11 z-50 min-w-[210px] rounded-2xl p-1.5 shadow-xl shadow-black/10"
           >
             <div className="px-3 py-2.5 border-b border-border mb-1">
               <p className="text-sm font-medium truncate">{user.profile?.name || 'User'}</p>
               <p className="text-xs text-muted-foreground truncate">{user.email}</p>
               {isAdmin && (
-                <span className="mt-1 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                <span className="mt-1 inline-block rounded-full bg-brand-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand">
                   Admin
                 </span>
               )}
@@ -130,28 +130,29 @@ export const Navbar = () => {
   ];
 
   return (
-    <nav className="sticky top-0 z-50 w-full [-webkit-backdrop-filter:blur(12px)] backdrop-blur-md bg-background/80 border-b border-border/50">
-      <Container className="flex h-16 items-center justify-between">
-        <Link to="/" className="flex items-center space-x-2">
-          <span className="font-sans text-xl font-bold tracking-tight">Scriptory</span>
+    <nav className="sticky top-0 z-50 w-full px-3 pt-3 sm:px-4 sm:pt-4">
+      <div className="glass mx-auto flex h-14 w-full max-w-6xl items-center justify-between rounded-full px-4 shadow-lg shadow-black/5 sm:px-6">
+        <Link to="/" className="group flex items-center gap-2.5">
+          <span className="h-4 w-4 rotate-45 rounded-[4px] bg-brand shadow-sm shadow-brand/40 transition-transform duration-300 group-hover:rotate-[135deg]" />
+          <span className="font-display text-xl font-extrabold tracking-tight">Scriptory</span>
         </Link>
 
-        <div className="hidden md:flex md:items-center md:space-x-6">
+        <div className="hidden md:flex md:items-center md:gap-7">
           {navLinks.map((link) => {
             const isActive = location.pathname === link.path;
             return (
               <Link
                 key={link.path}
                 to={link.path}
-                className={`relative text-sm transition-colors hover:text-primary ${
-                  isActive ? 'text-foreground font-medium' : 'text-muted-foreground'
+                className={`relative text-sm transition-colors hover:text-foreground ${
+                  isActive ? 'text-foreground font-semibold' : 'text-muted-foreground'
                 }`}
               >
                 {link.name}
                 {isActive && (
                   <motion.span
                     layoutId="nav-underline"
-                    className="absolute -bottom-0.5 left-0 right-0 h-0.5 bg-primary rounded-full"
+                    className="absolute -bottom-1.5 left-0 right-0 h-0.5 rounded-full bg-brand"
                   />
                 )}
               </Link>
@@ -161,14 +162,14 @@ export const Navbar = () => {
           {isAdmin && (
             <Link
               to="/write"
-              className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              className="flex items-center gap-1.5 rounded-full bg-brand px-4 py-1.5 text-sm font-semibold text-brand-foreground shadow-sm shadow-brand/25 transition-all hover:brightness-110 active:scale-95"
             >
               <PenLine size={14} />
               Write
             </Link>
           )}
 
-          <Button variant="ghost" size="sm" onClick={toggleTheme} className="h-9 w-9 px-0" aria-label="Toggle theme">
+          <Button variant="ghost" size="sm" onClick={toggleTheme} className="h-9 w-9 rounded-full px-0" aria-label="Toggle theme">
             {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
 
@@ -176,18 +177,18 @@ export const Navbar = () => {
         </div>
 
         <div className="flex items-center gap-1 md:hidden">
-          <Button variant="ghost" size="sm" onClick={toggleTheme} className="h-9 w-9 px-0" aria-label="Toggle theme">
+          <Button variant="ghost" size="sm" onClick={toggleTheme} className="h-9 w-9 rounded-full px-0" aria-label="Toggle theme">
             {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
           <Button
-            variant="ghost" size="sm" className="h-9 w-9 px-0"
+            variant="ghost" size="sm" className="h-9 w-9 rounded-full px-0"
             onClick={() => setIsOpen(!isOpen)}
             aria-label={isOpen ? 'Close menu' : 'Open menu'}
           >
             {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
         </div>
-      </Container>
+      </div>
 
       <AnimatePresence>
         {isOpen && (
@@ -196,7 +197,7 @@ export const Navbar = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: shouldReduceMotion ? 0 : -8 }}
             transition={{ duration: shouldReduceMotion ? 0 : 0.2 }}
-            className="border-b bg-background md:hidden"
+            className="glass mx-auto mt-2 max-w-6xl rounded-2xl shadow-lg shadow-black/5 md:hidden"
           >
             <Container className="py-4">
               <div className="flex flex-col space-y-4">
@@ -229,7 +230,7 @@ export const Navbar = () => {
                 })}
 
                 {isAdmin && (
-                  <Link to="/write" className="flex items-center gap-1.5 text-sm font-medium text-primary">
+                  <Link to="/write" className="flex items-center gap-1.5 text-sm font-semibold text-brand">
                     <PenLine size={14} />
                     Write
                   </Link>

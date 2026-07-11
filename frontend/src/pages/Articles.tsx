@@ -52,24 +52,27 @@ export const Articles = () => {
   return (
     <Section>
       <Container>
-        <div className="mb-8 flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
-          <h1 className="text-3xl font-bold">Articles</h1>
+        <div className="mb-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div>
+            <span className="text-xs font-bold uppercase tracking-widest text-brand">The Archive</span>
+            <h1 className="mt-2 font-display text-4xl font-extrabold tracking-tight sm:text-5xl">Articles</h1>
+          </div>
           <div className="relative w-full max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="text"
               placeholder="Search articles..."
-              className="pl-10 border-border focus-visible:ring-primary"
+              className="h-11 rounded-full border-border bg-background/50 pl-11 focus-visible:ring-brand/50"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
         </div>
 
-        <div className="mb-8 flex flex-wrap gap-2">
+        <div className="mb-10 flex flex-wrap gap-2">
           <Badge
-            variant={selectedTag === null ? 'default' : 'outline'}
-            className="cursor-pointer select-none"
+            variant={selectedTag === null ? 'brand' : 'outline'}
+            className="cursor-pointer select-none px-3.5 py-1"
             onClick={() => setSelectedTag(null)}
           >
             All
@@ -77,8 +80,8 @@ export const Articles = () => {
           {tags.map((tag) => (
             <Badge
               key={tag.name}
-              variant={selectedTag === tag.name ? 'default' : 'outline'}
-              className="cursor-pointer select-none"
+              variant={selectedTag === tag.name ? 'brand' : 'outline'}
+              className="cursor-pointer select-none px-3.5 py-1"
               onClick={() => setSelectedTag(selectedTag === tag.name ? null : tag.name)}
             >
               {tag.name}

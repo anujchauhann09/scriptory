@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Container } from '../components/ui/Container';
 import { Input } from '../components/ui/Input';
@@ -49,10 +49,14 @@ export const Login = () => {
       <Helmet>
         <title>{mode === 'login' ? 'Sign in' : 'Create account'} | Scriptory</title>
       </Helmet>
-      <div className="flex min-h-[80vh] items-center justify-center">
+      <div className="flex min-h-[80vh] items-center justify-center px-4 py-16">
         <Container className="max-w-sm w-full">
-          <div className="rounded-xl border bg-card p-8 shadow-sm">
-            <h1 className="mb-1 text-2xl font-bold">
+          <div className="glass rounded-3xl p-8 shadow-xl shadow-black/10">
+            <Link to="/" className="mb-6 inline-flex items-center gap-2.5">
+              <span className="h-4 w-4 rotate-45 rounded-[4px] bg-brand shadow-sm shadow-brand/40" />
+              <span className="font-display text-lg font-extrabold tracking-tight">Scriptory</span>
+            </Link>
+            <h1 className="mb-1 font-display text-2xl font-bold">
               {mode === 'login' ? 'Sign in' : 'Create account'}
             </h1>
             <p className="mb-6 text-sm text-muted-foreground">
@@ -112,7 +116,7 @@ export const Login = () => {
                   <p className="mt-1 text-xs text-muted-foreground">Minimum 8 characters</p>
                 )}
               </div>
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button type="submit" variant="brand" className="w-full" disabled={loading}>
                 {loading
                   ? mode === 'login' ? 'Signing in…' : 'Creating account…'
                   : mode === 'login' ? 'Sign in' : 'Create account'}
@@ -124,7 +128,7 @@ export const Login = () => {
               <button
                 type="button"
                 onClick={switchMode}
-                className="font-medium text-primary hover:underline"
+                className="font-semibold text-brand hover:underline"
               >
                 {mode === 'login' ? 'Sign up' : 'Sign in'}
               </button>

@@ -28,7 +28,7 @@ const ReadingProgress = () => {
   return (
     <div className="fixed top-0 left-0 right-0 z-[60] h-0.5 bg-transparent">
       <div
-        className="h-full bg-primary transition-[width] duration-100"
+        className="h-full bg-brand transition-[width] duration-100"
         style={{ width: `${progress}%` }}
       />
     </div>
@@ -305,8 +305,8 @@ export const ArticleDetail = () => {
         <Section className="pb-8 pt-12 md:pt-16">
           <Container className="max-w-3xl">
             <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
-              <Link to="/articles" className="inline-flex items-center text-sm text-muted-foreground hover:text-primary">
-                <ArrowLeft className="mr-2 h-4 w-4" />
+              <Link to="/articles" className="group inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-brand">
+                <ArrowLeft className="mr-2 h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
                 Back to Articles
               </Link>
 
@@ -408,7 +408,7 @@ export const ArticleDetail = () => {
           <Container className="max-w-3xl">
             <article
               ref={articleRef}
-              className="prose prose-lg prose-slate dark:prose-invert max-w-none [&_pre]:overflow-x-auto [&_table]:overflow-x-auto [&_table]:block"
+              className="prose prose-lg prose-slate dark:prose-invert max-w-none prose-a:text-brand prose-a:no-underline hover:prose-a:underline marker:text-brand [&_pre]:overflow-x-auto [&_table]:overflow-x-auto [&_table]:block"
               dangerouslySetInnerHTML={{ __html: article.content }}
             />
 
@@ -463,7 +463,7 @@ export const ArticleDetail = () => {
                         onChange={(e) => setCommentText(e.target.value)}
                         placeholder="Write a comment…"
                         rows={3}
-                        className="w-full resize-none rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary"
+                        className="w-full resize-none rounded-xl border border-border bg-muted/30 px-3.5 py-2.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-brand/50"
                       />
                       {commentError && (
                         <p className="mt-1 text-xs text-destructive">{commentError}</p>
@@ -483,7 +483,7 @@ export const ArticleDetail = () => {
                 </form>
               ) : (
                 <p className="mb-8 text-sm text-muted-foreground">
-                  <Link to="/login" className="text-primary hover:underline">Sign in</Link> to leave a comment.
+                  <Link to="/login" className="font-medium text-brand hover:underline">Sign in</Link> to leave a comment.
                 </p>
               )}
 

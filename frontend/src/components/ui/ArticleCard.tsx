@@ -20,53 +20,54 @@ export const ArticleCard = ({ article, index }: ArticleCardProps) => {
   });
 
   return (
-    <motion.div
+    <motion.article
       initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: shouldReduceMotion ? 0 : (index ?? 0) * 0.05, duration: shouldReduceMotion ? 0 : 0.4 }}
-      whileHover={{ y: shouldReduceMotion ? 0 : -5 }}
-      className="rounded-xl border bg-card overflow-hidden hover:shadow-lg transition-shadow"
+      whileHover={{ y: shouldReduceMotion ? 0 : -6 }}
+      className="group card-premium flex flex-col overflow-hidden rounded-2xl"
     >
-      <div className="w-full aspect-video overflow-hidden">
+      <div className="relative w-full aspect-video overflow-hidden">
         {imgError || !article.coverImage ? (
-          <div className="w-full h-full bg-gradient-to-br from-muted to-muted-foreground/20" />
+          <div className="h-full w-full bg-gradient-to-br from-muted via-muted to-brand/10" />
         ) : (
           <img
             src={article.coverImage}
             alt={article.title}
-            className="w-full aspect-video object-cover"
+            className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
             onError={() => setImgError(true)}
           />
         )}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
       </div>
 
-      <div className="p-4 flex flex-col gap-2">
-        <div className="text-xs text-muted-foreground flex items-center gap-1">
+      <div className="flex flex-1 flex-col gap-2 p-5">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <span>{formattedDate}</span>
-          <span>·</span>
+          <span className="text-brand">·</span>
           <span>{article.readingTime ?? 1} min read</span>
         </div>
 
         <Link to={`/articles/${article.slug}`}>
-          <h3 className="text-lg font-semibold leading-snug hover:text-primary transition-colors">
+          <h3 className="font-display text-lg font-bold leading-snug tracking-tight transition-colors group-hover:text-brand">
             {article.title}
           </h3>
         </Link>
 
-        <p className="text-sm text-muted-foreground line-clamp-3 mt-2">
+        <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-muted-foreground">
           {article.excerpt}
         </p>
 
         {article.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
+          <div className="mt-auto flex flex-wrap gap-1.5 pt-3">
             {article.tags.map((tag) => (
-              <Badge key={tag} variant="secondary">
+              <Badge key={tag} variant="outline">
                 {tag}
               </Badge>
             ))}
           </div>
         )}
       </div>
-    </motion.div>
+    </motion.article>
   );
 };

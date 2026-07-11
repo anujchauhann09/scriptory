@@ -219,10 +219,10 @@ export const WriteArticle = () => {
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
       ) : (
-        <div className="min-h-screen bg-background">
-          <div className="sticky top-16 z-40 border-b bg-background/95 [backdrop-filter:blur(8px)] [-webkit-backdrop-filter:blur(8px)]">
+        <div className="min-h-screen">
+          <div className="glass sticky top-[4.75rem] z-40 rounded-2xl">
             <Container className="flex h-auto min-h-[3rem] flex-wrap items-center justify-between gap-2 py-2">
-              <span className="text-sm text-muted-foreground">
+              <span className="text-sm font-medium text-muted-foreground">
                 {editArticle ? 'Edit article' : 'New article'}
               </span>
               <div className="flex flex-wrap items-center gap-2">
@@ -240,7 +240,7 @@ export const WriteArticle = () => {
                   onClick={() => setPublished((p) => !p)}
                   className="flex items-center gap-2 text-sm text-muted-foreground"
                 >
-                  <div className={`relative h-5 w-9 flex-shrink-0 rounded-full transition-colors ${published ? 'bg-primary' : 'bg-muted-foreground/30'}`}>
+                  <div className={`relative h-5 w-9 flex-shrink-0 rounded-full transition-colors ${published ? 'bg-brand' : 'bg-muted-foreground/30'}`}>
                     <span className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${published ? 'translate-x-4' : 'translate-x-0'}`} />
                   </div>
                   <span className="hidden sm:inline">{published ? 'Published' : 'Draft'}</span>
@@ -273,7 +273,7 @@ export const WriteArticle = () => {
                 <h1 className="mb-3 text-4xl font-bold leading-tight">{title || 'Untitled'}</h1>
                 {subtitle && <p className="mb-8 text-xl text-muted-foreground">{subtitle}</p>}
                 <article
-                  className="prose prose-lg prose-slate dark:prose-invert"
+                  className="prose prose-lg prose-slate dark:prose-invert prose-a:text-brand marker:text-brand"
                   dangerouslySetInnerHTML={{ __html: mdToHtml(content) }}
                 />
               </div>
@@ -318,7 +318,7 @@ export const WriteArticle = () => {
                     onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setExcerpt(e.target.value)}
                     rows={2}
                     maxLength={500}
-                    className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-brand/50"
                   />
                   <p className="mt-1 text-right text-xs text-muted-foreground">{excerpt.length}/500</p>
                 </div>

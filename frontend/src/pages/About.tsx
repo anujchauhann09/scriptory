@@ -13,10 +13,11 @@ export const About = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: shouldReduceMotion ? 0 : 0.5 }}
       >
-        <div className="prose prose-lg dark:prose-invert">
-          <h1 className="mb-8 text-4xl font-bold tracking-tight sm:text-5xl">
-            About Me
-          </h1>
+        <span className="text-xs font-bold uppercase tracking-widest text-brand">Who's behind this</span>
+        <h1 className="mb-10 mt-3 font-display text-4xl font-extrabold tracking-tight sm:text-6xl">
+          About <span className="text-brand">Me</span>
+        </h1>
+        <div className="prose prose-lg dark:prose-invert prose-headings:font-display prose-a:text-brand prose-strong:text-foreground marker:text-brand">
 
           <p>
             Yes, this entire blog is owned, operated, and occasionally broken by <strong>Anuj Chauhan</strong> — one person, one keyboard, zero regrets.
