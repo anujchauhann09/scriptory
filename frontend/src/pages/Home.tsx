@@ -7,18 +7,27 @@ import { ArticleCard } from '../components/ui/ArticleCard';
 import { ArticleCardSkeleton } from '../components/ui/Skeleton';
 import { Badge } from '../components/ui/Badge';
 import { articlesApi, type ApiArticle } from '../lib/api';
+import { getCache, setCache } from '../lib/cache';
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowRight, Sparkles } from 'lucide-react';
 
+const HOME_CACHE_KEY = 'home:articles';
+
 export const Home = () => {
-  const [articles, setArticles] = useState<ApiArticle[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = getCache<ApiArticle[]>(HOME_CACHE_KEY);
+  const [articles, setArticles] = useState<ApiArticle[]>(cached ?? []);
+  const [loading, setLoading] = useState(!cached);
   const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     let cancelled = false;
+    // revalidate in the background; cached data (if any) is already shown
     articlesApi.list({ limit: 4 })
-      .then((res) => { if (!cancelled) setArticles(res.articles); })
+      .then((res) => {
+        if (cancelled) return;
+        setArticles(res.articles);
+        setCache(HOME_CACHE_KEY, res.articles);
+      })
       .catch(console.error)
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

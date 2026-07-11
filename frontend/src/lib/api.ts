@@ -52,6 +52,8 @@ export interface ApiArticle {
     uuid: string;
     profile?: { name?: string; avatarUrl?: string };
   };
+  // Present on the article-detail response (GET /articles/:slug), omitted from list.
+  comments?: ApiComment[];
 }
 
 export interface PaginatedArticles {
@@ -138,6 +140,54 @@ export const uploadApi = {
   cover: (file: File) => uploadFile('/upload/cover', file),
   inline: (file: File) => uploadFile('/upload/inline', file),
   avatar: (file: File) => uploadFile('/upload/avatar', file),
+};
+
+export interface ContactPayload { name: string; email: string; message: string }
+
+export interface AdminContactMessage {
+  uuid: string;
+  name: string;
+  email: string;
+  message: string;
+  handled: boolean;
+  createdAt: string;
+}
+
+export const contactApi = {
+  submit: (data: ContactPayload) =>
+    request<{ uuid: string; createdAt: string } | null>('/contact', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  // Admin only — server enforces ADMIN role.
+  list: () => request<AdminContactMessage[]>('/contact'),
+  setHandled: (uuid: string, handled: boolean) =>
+    request<{ uuid: string; handled: boolean }>(`/contact/${uuid}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ handled }),
+    }),
+  remove: (uuid: string) => request<null>(`/contact/${uuid}`, { method: 'DELETE' }),
+};
+
+export type SubscribeStatus = 'subscribed' | 'resubscribed' | 'already';
+
+export interface AdminSubscriber {
+  uuid: string;
+  email: string;
+  status: 'SUBSCRIBED' | 'UNSUBSCRIBED';
+  createdAt: string;
+}
+
+export const newsletterApi = {
+  subscribe: (email: string) =>
+    request<{ status: SubscribeStatus }>('/newsletter/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  // Admin only — server enforces ADMIN role.
+  listSubscribers: () => request<AdminSubscriber[]>('/newsletter/subscribers'),
+  removeSubscriber: (uuid: string) =>
+    request<null>(`/newsletter/subscribers/${uuid}`, { method: 'DELETE' }),
 };
 
 export interface UserProfile { name?: string | null; bio?: string | null; avatarUrl?: string | null }

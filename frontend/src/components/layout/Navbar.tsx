@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { Menu, X, Sun, Moon, PenLine, LogOut, LogIn, User } from 'lucide-react';
+import { Menu, X, Sun, Moon, PenLine, LogOut, LogIn, User, Inbox } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { Container } from '../ui/Container';
@@ -86,6 +86,17 @@ const UserMenu = () => {
               >
                 <PenLine size={14} />
                 Write article
+              </Link>
+            )}
+
+            {isAdmin && (
+              <Link
+                to="/admin"
+                onClick={() => setOpen(false)}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <Inbox size={14} />
+                Inbox
               </Link>
             )}
 
@@ -233,6 +244,13 @@ export const Navbar = () => {
                   <Link to="/write" className="flex items-center gap-1.5 text-sm font-semibold text-brand">
                     <PenLine size={14} />
                     Write
+                  </Link>
+                )}
+
+                {isAdmin && (
+                  <Link to="/admin" className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <Inbox size={14} />
+                    Inbox
                   </Link>
                 )}
 

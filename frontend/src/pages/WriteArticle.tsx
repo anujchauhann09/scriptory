@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { articlesApi, uploadApi, type ArticlePayload, type ApiArticle } from '../lib/api';
+import { clearCache } from '../lib/cache';
 import { Container } from '../components/ui/Container';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -202,6 +203,7 @@ export const WriteArticle = () => {
       } else {
         article = await articlesApi.create(payload);
       }
+      clearCache(); // new/edited article — drop cached lists + article so they refetch
       navigate(`/articles/${article.slug}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save');

@@ -4,6 +4,7 @@ import { Section } from '../components/ui/Section';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { articlesApi, tagsApi, type ApiArticle, type ApiTag } from '../lib/api';
+import { getCache, setCache } from '../lib/cache';
 import { Search } from 'lucide-react';
 import { ArticleCard } from '../components/ui/ArticleCard';
 import { ArticleCardSkeleton } from '../components/ui/Skeleton';
@@ -14,28 +15,47 @@ export const Articles = () => {
   const [articles, setArticles] = useState<ApiArticle[]>([]);
   const [tags, setTags] = useState<ApiTag[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
 
+  // Debounce the search box so typing doesn't fire a request per keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
   const fetchArticles = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true);
+    const cacheKey = `articles:${page}:${debouncedSearch}:${selectedTag ?? ''}`;
+    const cached = getCache<{ articles: ApiArticle[]; totalPages: number }>(cacheKey);
+
+    // seed instantly from cache (no skeleton), then revalidate in the background
+    if (cached) {
+      setArticles(cached.articles);
+      setTotalPages(cached.totalPages);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
     try {
       const params: Record<string, string | number> = { page, limit: 9 };
-      if (searchQuery) params.search = searchQuery;
+      if (debouncedSearch) params.search = debouncedSearch;
       if (selectedTag) params.tag = selectedTag;
       const res = await articlesApi.list(params);
       if (signal?.aborted) return;
       setArticles(res.articles);
       setTotalPages(res.pagination.totalPages);
+      setCache(cacheKey, { articles: res.articles, totalPages: res.pagination.totalPages });
     } catch (err) {
       if (signal?.aborted) return;
       console.error(err);
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [page, searchQuery, selectedTag]);
+  }, [page, debouncedSearch, selectedTag]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -47,7 +67,7 @@ export const Articles = () => {
     tagsApi.list().then(setTags).catch(console.error);
   }, []);
 
-  useEffect(() => { setPage(1); }, [searchQuery, selectedTag]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, selectedTag]);
 
   return (
     <Section>

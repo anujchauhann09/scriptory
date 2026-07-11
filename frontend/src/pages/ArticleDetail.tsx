@@ -7,6 +7,7 @@ import { Badge } from '../components/ui/Badge';
 import { ArticleCard } from '../components/ui/ArticleCard';
 import { ArticleDetailSkeleton } from '../components/ui/Skeleton';
 import { articlesApi, commentsApi, likesApi, type ApiArticle, type ApiComment } from '../lib/api';
+import { getCache, setCache, clearCache } from '../lib/cache';
 import { useAuth } from '../context/AuthContext';
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowLeft, Clock, Calendar, Eye, Pencil, Trash2, Send, X, Heart, Share2, Link2, Twitter, Linkedin, Check } from 'lucide-react';
@@ -118,24 +119,33 @@ export const ArticleDetail = () => {
   useEffect(() => {
     if (!slug) return;
     viewIncrementedRef.current = false;
-    setLoading(true);
     setNotFound(false);
-    setArticle(null);
-    setComments([]);
     setRelated([]);
+
+    // seed instantly from cache (skip skeleton) then revalidate in the background
+    const cachedArticle = getCache<ApiArticle>(`article:${slug}`);
+    if (cachedArticle) {
+      setArticle(cachedArticle);
+      setComments(cachedArticle.comments ?? []);
+      setLoading(false);
+    } else {
+      setLoading(true);
+      setArticle(null);
+      setComments([]);
+    }
 
     let cancelled = false;
     articlesApi.get(slug)
       .then((data) => {
         if (cancelled) return;
         setArticle(data);
+        // comments ship with the article-detail payload — no separate request needed
+        setComments(data.comments ?? []);
+        setCache(`article:${slug}`, data);
         if (!viewIncrementedRef.current) {
           viewIncrementedRef.current = true;
           articlesApi.incrementViewBySlug(slug).catch(() => {});
         }
-        commentsApi.list(slug)
-          .then((c) => { if (!cancelled) setComments(c); })
-          .catch(() => {});
         likesApi.status(slug)
           .then((s) => { if (!cancelled) { setLiked(s.liked); setLikeCount(s.likeCount); } })
           .catch(() => {});
@@ -220,6 +230,7 @@ export const ArticleDetail = () => {
     setDeleting(true);
     try {
       await articlesApi.delete(article.uuid);
+      clearCache(); // article gone — drop cached article + stale lists
       navigate('/articles');
     } catch {
       setDeleting(false);
@@ -245,7 +256,12 @@ export const ArticleDetail = () => {
     setCommentError('');
     try {
       const newComment = await commentsApi.create(slug, commentText.trim());
-      setComments((prev) => [newComment, ...prev]);
+      setComments((prev) => {
+        const next = [newComment, ...prev];
+        const cached = getCache<ApiArticle>(`article:${slug}`);
+        if (cached) setCache(`article:${slug}`, { ...cached, comments: next });
+        return next;
+      });
       setCommentText('');
     } catch (err: unknown) {
       setCommentError(err instanceof Error ? err.message : 'Failed to post comment');
@@ -258,7 +274,12 @@ export const ArticleDetail = () => {
     if (!slug) return;
     try {
       await commentsApi.delete(slug, commentUuid);
-      setComments((prev) => prev.filter((c) => c.uuid !== commentUuid));
+      setComments((prev) => {
+        const next = prev.filter((c) => c.uuid !== commentUuid);
+        const cached = getCache<ApiArticle>(`article:${slug}`);
+        if (cached) setCache(`article:${slug}`, { ...cached, comments: next });
+        return next;
+      });
     } catch {}
   };
 

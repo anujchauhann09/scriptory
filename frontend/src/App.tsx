@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { ThemeProvider } from './context/ThemeContext';
@@ -7,12 +7,21 @@ import { LayoutWrapper } from './components/layout/LayoutWrapper';
 import { Home } from './pages/Home';
 import { Articles } from './pages/Articles';
 import { ArticleDetail } from './pages/ArticleDetail';
-import { About } from './pages/About';
-import { Contact } from './pages/Contact';
 import { NotFound } from './pages/NotFound';
-import { Login } from './pages/Login';
-import { WriteArticle } from './pages/WriteArticle';
-import { Profile } from './pages/Profile';
+
+// secondary / admin routes — code-split so the core reading experience loads first
+const About = lazy(() => import('./pages/About').then((m) => ({ default: m.About })));
+const Contact = lazy(() => import('./pages/Contact').then((m) => ({ default: m.Contact })));
+const Login = lazy(() => import('./pages/Login').then((m) => ({ default: m.Login })));
+const Profile = lazy(() => import('./pages/Profile').then((m) => ({ default: m.Profile })));
+const WriteArticle = lazy(() => import('./pages/WriteArticle').then((m) => ({ default: m.WriteArticle })));
+const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })));
+
+const RouteFallback = () => (
+  <div className="flex min-h-[60vh] items-center justify-center">
+    <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+  </div>
+);
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isLoading } = useAuth();
@@ -37,6 +46,7 @@ export default function App() {
         <AuthProvider>
           <Router>
             <LayoutWrapper>
+              <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/articles" element={<Articles />} />
@@ -53,6 +63,14 @@ export default function App() {
                   }
                 />
                 <Route
+                  path="/admin"
+                  element={
+                    <AdminRoute>
+                      <Admin />
+                    </AdminRoute>
+                  }
+                />
+                <Route
                   path="/profile"
                   element={
                     <ProtectedRoute>
@@ -62,6 +80,7 @@ export default function App() {
                 />
                 <Route path="*" element={<NotFound />} />
               </Routes>
+              </Suspense>
             </LayoutWrapper>
           </Router>
         </AuthProvider>

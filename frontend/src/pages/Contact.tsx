@@ -4,7 +4,7 @@ import { Section } from '../components/ui/Section';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { motion } from 'motion/react';
-import emailjs from '@emailjs/browser';
+import { contactApi } from '../lib/api';
 import { Helmet } from 'react-helmet-async';
 
 export const Contact = () => {
@@ -30,30 +30,12 @@ export const Contact = () => {
     }
 
     try {
-      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID || 'service_id';
-      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || 'template_id';
-      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY || 'public_key';
-      const contactTemplateId = import.meta.env.VITE_EMAILJS_CONTACT_TEMPLATE_ID || 'contact_template';
-
-      if (serviceId === 'service_id' || templateId === 'template_id' || publicKey === 'public_key' || contactTemplateId === 'contact_template') {
-         await new Promise((resolve) => setTimeout(resolve, 1000));
-         console.warn('EmailJS keys not set. Simulating success.');
-      } else {
-         const formData = {
-          name: name,
-          email: email,
-          message: message,
-        };
-
-        await emailjs.send(serviceId, templateId, formData, publicKey);
-        await emailjs.send(serviceId, contactTemplateId, formData, publicKey);
-      }
-
+      await contactApi.submit({ name, email, message });
       setSuccess(true);
       form.reset();
     } catch (err) {
-      console.error('EmailJS Error:', err);
-      setError('Failed to send message. Please try again later.');
+      console.error('Contact submit error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to send message. Please try again later.');
     } finally {
       setLoading(false);
     }

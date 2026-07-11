@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Container } from '../ui/Container';
 import { Github, Twitter, Linkedin } from 'lucide-react';
-import emailjs from '@emailjs/browser';
+import { newsletterApi } from '../../lib/api';
 
 export const Footer = () => {
   const [newsletterEmail, setNewsletterEmail] = useState('');
@@ -21,28 +21,17 @@ export const Footer = () => {
     setNewsletterLoading(true);
 
     try {
-      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-      const templateId = import.meta.env.VITE_EMAILJS_CONTACT_TEMPLATE_ID;
-      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
-
-      if (!serviceId || !templateId || !publicKey) {
-        console.warn('EmailJS environment variables missing.');
-        setNewsletterStatus('Newsletter not configured.');
-        return;
-      }
-
-      await emailjs.send(
-        serviceId,
-        templateId,
-        { email: newsletterEmail },
-        publicKey
-      );
-
-      setNewsletterStatus('Subscribed successfully!');
+      const result = await newsletterApi.subscribe(newsletterEmail);
+      const messages: Record<string, string> = {
+        subscribed: 'Subscribed successfully!',
+        resubscribed: "Welcome back — you're subscribed again!",
+        already: "You're already subscribed.",
+      };
+      setNewsletterStatus(messages[result.status] || 'Subscribed successfully!');
       setNewsletterEmail('');
     } catch (err) {
       console.error('Newsletter error:', err);
-      setNewsletterStatus('Something went wrong. Try again.');
+      setNewsletterStatus(err instanceof Error ? err.message : 'Something went wrong. Try again.');
     } finally {
       setNewsletterLoading(false);
     }

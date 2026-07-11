@@ -12,6 +12,11 @@ enum Role {
   USER
 }
 
+enum SubscriberStatus {
+  SUBSCRIBED
+  UNSUBSCRIBED
+}
+
 model User {
   id        Int      @id @default(autoincrement())
   uuid      String   @unique @default(uuid())
@@ -132,4 +137,33 @@ model Like {
   @@unique([userId, articleId])
   @@index([articleId])
   @@index([userId])
+}
+
+model ContactMessage {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  name      String
+  email     String
+  message   String
+  ipHash    String?
+  userAgent String?
+  handled   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([email])
+  @@index([handled])
+}
+
+model Subscriber {
+  id               Int              @id @default(autoincrement())
+  uuid             String           @unique @default(uuid())
+  email            String           @unique
+  status           SubscriberStatus @default(SUBSCRIBED)
+  unsubscribeToken String           @unique @default(uuid())
+  createdAt        DateTime         @default(now())
+  unsubscribedAt   DateTime?
+
+  @@index([status])
+  @@index([createdAt])
 }
