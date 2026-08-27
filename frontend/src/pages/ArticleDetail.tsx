@@ -9,6 +9,7 @@ import { SmartImage } from '../components/ui/SmartImage';
 import { ArticleDetailSkeleton } from '../components/ui/Skeleton';
 import { articlesApi, commentsApi, likesApi, bookmarksApi, type ApiArticle, type ApiComment } from '../lib/api';
 import { getCache, setCache, clearCache } from '../lib/cache';
+import { sanitizeArticleHtml } from '../lib/sanitize';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { motion, useReducedMotion } from 'motion/react';
@@ -641,6 +642,21 @@ export const ArticleDetail = () => {
               )}
             </div>
 
+            {/*
+              Category first and visually distinct from tags: it is the one
+              curated shelf the article sits on, whereas tags are free-form
+              topics. Absent for an uncategorised article, which then renders
+              exactly as it did before categories existed.
+            */}
+            {article.category && (
+              <Link
+                to={`/articles?category=${encodeURIComponent(article.category.slug)}`}
+                className="mb-3 inline-block text-xs font-bold uppercase tracking-widest text-brand transition-opacity hover:opacity-80"
+              >
+                {article.category.name}
+              </Link>
+            )}
+
             <div className="mb-6 flex flex-wrap gap-2">
               {article.tags.map((tag) => (
                 <Badge key={tag} variant="secondary">{tag}</Badge>
@@ -748,7 +764,9 @@ export const ArticleDetail = () => {
               ref={articleRef}
               style={{ fontSize: readerFontSize }}
               className={`prose prose-lg prose-slate dark:prose-invert max-w-none prose-a:text-brand prose-a:no-underline hover:prose-a:underline marker:text-brand [&_pre]:overflow-x-auto [&_table]:overflow-x-auto [&_table]:block ${readerSepia ? 'reader-sepia' : ''}`}
-              dangerouslySetInnerHTML={{ __html: article.content }}
+              // Sanitised at the render boundary as well as on write, so a row
+              // stored before server-side sanitising existed still cannot inject.
+              dangerouslySetInnerHTML={{ __html: sanitizeArticleHtml(article.content) }}
             />
 
             {article.series && <SeriesNav series={article.series} currentSlug={article.slug} />}

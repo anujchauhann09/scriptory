@@ -1,9 +1,17 @@
 const commentService = require("./comment.service");
-const { sendSuccess, sendError } = require("../../utils/response");
+const { validated } = require("../../middleware/validate.middleware");
+const { sendSuccess } = require("../../utils/response");
 
 const getComments = async (req, res, next) => {
   try {
-    const comments = await commentService.getComments(req.params.articleId);
+    const { comments, pagination } = await commentService.getComments(
+      req.params.articleId,
+      req.user,
+      validated(req, "query")
+    );
+    // The response body stays the bare array the client already expects;
+    // pagination travels in a header so no existing caller breaks.
+    res.set("X-Total-Count", String(pagination.total));
     return sendSuccess(res, 200, "Comments fetched", comments);
   } catch (err) {
     next(err);
@@ -12,14 +20,11 @@ const getComments = async (req, res, next) => {
 
 const createComment = async (req, res, next) => {
   try {
-    const { content } = req.body;
-    if (!content || !content.trim()) {
-      return sendError(res, 400, "Comment content is required");
-    }
     const comment = await commentService.createComment(
       req.user.uuid,
       req.params.articleId,
-      content.trim()
+      req.body.content,
+      req.user
     );
     return sendSuccess(res, 201, "Comment created", comment);
   } catch (err) {
@@ -29,11 +34,7 @@ const createComment = async (req, res, next) => {
 
 const deleteComment = async (req, res, next) => {
   try {
-    await commentService.deleteComment(
-      req.params.uuid,
-      req.user.uuid,
-      req.user.role === "ADMIN"
-    );
+    await commentService.deleteComment(req.params.uuid, req.user.uuid, req.user.role === "ADMIN");
     return sendSuccess(res, 200, "Comment deleted");
   } catch (err) {
     next(err);

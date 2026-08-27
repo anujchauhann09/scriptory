@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { articlesApi, uploadApi, type ArticlePayload, type ApiArticle } from '../lib/api';
+import { articlesApi, uploadApi, categoriesApi, type ArticlePayload, type ApiArticle, type ApiCategory } from '../lib/api';
 import { clearCache } from '../lib/cache';
 import { Container } from '../components/ui/Container';
 import { Button } from '../components/ui/Button';
@@ -123,6 +123,10 @@ export const WriteArticle = () => {
   const [tags, setTags] = useState<string[]>([]);
   const [series, setSeries] = useState('');
   const [seriesOrder, setSeriesOrder] = useState('');
+  // '' means "no category". The editor opens on that value, so publishing
+  // without choosing one is the default path, not an extra step to skip.
+  const [category, setCategory] = useState('');
+  const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [publishAt, setPublishAt] = useState('');
   const [content, setContent] = useState('');
   const [preview, setPreview] = useState(false);
@@ -130,6 +134,13 @@ export const WriteArticle = () => {
   const [saving, setSaving] = useState(false);
   const [inlineUploading, setInlineUploading] = useState(false);
   const [error, setError] = useState('');
+
+  // The taxonomy is a fixed list from the server. If the request fails the
+  // select simply has no options beyond "No category", and publishing still
+  // works — a category must never be able to block a save.
+  useEffect(() => {
+    categoriesApi.list().then(setCategories).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!editUuid) return;
@@ -152,6 +163,7 @@ export const WriteArticle = () => {
     setTags(editArticle.tags);
     setPublished(editArticle.published);
     setContent(editArticle.content);
+    setCategory(editArticle.category?.slug || '');
     setSeries(editArticle.series?.title || '');
     setSeriesOrder(editArticle.series?.order ? String(editArticle.series.order) : '');
     // ISO → datetime-local ("YYYY-MM-DDTHH:mm") in local time
@@ -236,6 +248,9 @@ export const WriteArticle = () => {
         coverImage: editArticle ? (coverImage || null) : (coverImage || undefined),
         published,
         tags,
+        // Always sent: null clears the category, which is how an article gets
+        // unfiled again. Omitting it would make clearing impossible.
+        category: category || null,
         series: series.trim() || null,
         seriesOrder: series.trim() && seriesOrder ? Number(seriesOrder) : null,
         publishAt: publishAt ? new Date(publishAt).toISOString() : null,
@@ -391,6 +406,34 @@ export const WriteArticle = () => {
                       <Plus size={14} />
                     </Button>
                   </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="article-category"
+                    className="mb-1.5 block text-sm font-medium text-muted-foreground"
+                  >
+                    Category <span className="font-normal">(optional)</span>
+                  </label>
+                  <select
+                    id="article-category"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-border bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {/* Listed first and selected by default — uncategorised is a
+                        valid, unremarkable end state, not a missing value. */}
+                    <option value="">No category</option>
+                    {categories.map((c) => (
+                      <option key={c.slug} value={c.slug}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Where this sits in the learning path. Leave as "No category" to publish
+                    without one — you can file it later without touching the article.
+                  </p>
                 </div>
 
                 <div>

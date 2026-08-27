@@ -1,6 +1,5 @@
 const newsletterService = require("./newsletter.service");
-const { subscribeSchema } = require("./newsletter.validation");
-const { sendSuccess, sendError } = require("../../utils/response");
+const { sendSuccess } = require("../../utils/response");
 
 const MESSAGES = {
   subscribed: "Subscribed successfully!",
@@ -12,6 +11,21 @@ const escapeHtml = (str = "") =>
   str.replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
   );
+
+/**
+ * Sends one of the small unsubscribe pages.
+ *
+ * `no-store` matters here: the URL carries a capability token, and a shared
+ * cache or a browser back-button restore holding that page is a way for the
+ * token to outlive the click that used it.
+ */
+const sendPage = (res, status, html) =>
+  res
+    .status(status)
+    .set("Content-Type", "text/html; charset=utf-8")
+    .set("Cache-Control", "no-store")
+    .set("Referrer-Policy", "no-referrer")
+    .send(html);
 
 // minimal, self-contained (no external assets) HTML page for unsubscribe flows
 const page = ({ heading, body, form }) => `<!doctype html>
@@ -27,10 +41,7 @@ ${form || ""}
 
 const subscribe = async (req, res, next) => {
   try {
-    const { error, value } = subscribeSchema.validate(req.body, { abortEarly: false });
-    if (error) {
-      return sendError(res, 400, "Validation failed", error.details.map((d) => d.message));
-    }
+    const value = req.body;
 
     // honeypot tripped — pretend success, drop silently.
     if (value.company) {
@@ -48,11 +59,15 @@ const subscribe = async (req, res, next) => {
 // link prefetching / scanners can't accidentally unsubscribe anyone
 const unsubscribeConfirm = async (req, res, next) => {
   try {
-    const token = String(req.query.token || "");
+    // Bounded at the boundary: the token is a uuid, so anything longer is
+    // malformed and should never be carried into a query or echoed into a page.
+    const token = String(req.query.token || "").slice(0, 200);
     const subscriber = await newsletterService.findByToken(token);
 
     if (!subscriber) {
-      return res.status(404).send(
+      return sendPage(
+        res,
+        404,
         page({
           heading: "Invalid unsubscribe link",
           body: "This link is invalid or has expired.",
@@ -60,14 +75,18 @@ const unsubscribeConfirm = async (req, res, next) => {
       );
     }
     if (subscriber.status === "UNSUBSCRIBED") {
-      return res.status(200).send(
+      return sendPage(
+        res,
+        200,
         page({
           heading: "You're already unsubscribed",
           body: `${escapeHtml(subscriber.email)} is not receiving Scriptory emails.`,
         })
       );
     }
-    return res.status(200).send(
+    return sendPage(
+      res,
+      200,
       page({
         heading: "Unsubscribe from Scriptory?",
         body: `Confirm to stop sending emails to ${escapeHtml(subscriber.email)}.`,
@@ -86,12 +105,14 @@ const unsubscribeConfirm = async (req, res, next) => {
 // capability
 const unsubscribe = async (req, res, next) => {
   try {
-    const token = String(req.body.token || req.query.token || "");
+    const token = String(req.body.token || req.query.token || "").slice(0, 200);
     const result = await newsletterService.unsubscribe(token);
     const heading = result.alreadyUnsubscribed
       ? "You're already unsubscribed"
       : "You've been unsubscribed";
-    return res.status(200).send(
+    return sendPage(
+      res,
+      200,
       page({
         heading,
         body: `${escapeHtml(result.email)} will no longer receive Scriptory emails.`,

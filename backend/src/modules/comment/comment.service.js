@@ -1,42 +1,46 @@
 const prisma = require("../../config/db");
+const { resolveVisibleArticle } = require("../article/article.service");
 
-const resolveArticleId = async (identifier) => {
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(identifier);
-  const where = isUuid ? { uuid: identifier } : { slug: identifier };
-  const article = await prisma.article.findFirst({ where, select: { id: true } });
-
-  return article?.id ?? null;
-};
-
-const getComments = async (articleIdentifier) => {
-  const articleId = await resolveArticleId(articleIdentifier);
-  if (!articleId) {
-    const err = new Error("Article not found");
-    err.statusCode = 404;
-    throw err;
-  }
-  
-  return prisma.comment.findMany({
-    where: { articleId },
-    orderBy: { createdAt: "desc" },
+const COMMENT_SELECT = {
+  uuid: true,
+  content: true,
+  createdAt: true,
+  user: {
     select: {
       uuid: true,
-      content: true,
-      createdAt: true,
-      user: {
-        select: {
-          uuid: true,
-          profile: { select: { name: true, avatarUrl: true } },
-        },
-      },
+      profile: { select: { name: true, avatarUrl: true } },
     },
-  });
+  },
 };
 
-const createComment = async (userUuid, articleIdentifier, content) => {
-  const [user, articleId] = await Promise.all([
+/**
+ * Every entry point resolves the article through the article service's
+ * visibility rule rather than looking it up directly. A comment thread on an
+ * unpublished draft is unreleased content in its own right, and previously the
+ * comment endpoints resolved the slug with no `published` predicate at all —
+ * so a draft's existence, and its discussion, leaked to anyone with the slug.
+ */
+const getComments = async (articleIdentifier, viewer, { page = 1, limit = 50 } = {}) => {
+  const { id: articleId } = await resolveVisibleArticle(articleIdentifier, viewer);
+
+  const [comments, total] = await Promise.all([
+    prisma.comment.findMany({
+      where: { articleId },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+      select: COMMENT_SELECT,
+    }),
+    prisma.comment.count({ where: { articleId } }),
+  ]);
+
+  return { comments, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+};
+
+const createComment = async (userUuid, articleIdentifier, content, viewer) => {
+  const [user, article] = await Promise.all([
     prisma.user.findUnique({ where: { uuid: userUuid }, select: { id: true } }),
-    resolveArticleId(articleIdentifier),
+    resolveVisibleArticle(articleIdentifier, viewer),
   ]);
 
   if (!user) {
@@ -44,25 +48,10 @@ const createComment = async (userUuid, articleIdentifier, content) => {
     err.statusCode = 404;
     throw err;
   }
-  if (!articleId) {
-    const err = new Error("Article not found");
-    err.statusCode = 404;
-    throw err;
-  }
 
   return prisma.comment.create({
-    data: { userId: user.id, articleId, content },
-    select: {
-      uuid: true,
-      content: true,
-      createdAt: true,
-      user: {
-        select: {
-          uuid: true,
-          profile: { select: { name: true, avatarUrl: true } },
-        },
-      },
-    },
+    data: { userId: user.id, articleId: article.id, content },
+    select: COMMENT_SELECT,
   });
 };
 
@@ -76,9 +65,13 @@ const deleteComment = async (commentUuid, requestingUserUuid, isAdmin) => {
     err.statusCode = 404;
     throw err;
   }
+  // Ownership check: without it, any signed-in user could delete any comment by
+  // uuid — a textbook insecure direct object reference.
   if (!isAdmin && comment.user.uuid !== requestingUserUuid) {
-    const err = new Error("Forbidden");
-    err.statusCode = 403;
+    // 404 rather than 403: confirming that a uuid exists but belongs to someone
+    // else is an enumeration oracle for no benefit.
+    const err = new Error("Comment not found");
+    err.statusCode = 404;
     throw err;
   }
   await prisma.comment.delete({ where: { uuid: commentUuid } });

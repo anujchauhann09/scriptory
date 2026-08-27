@@ -1,42 +1,106 @@
 const cron = require("node-cron");
-const prisma = require("./config/db");
+const config = require("./config/env");
+const platform = require("./config/platform");
 const logger = require("./utils/logger");
-const newsletterService = require("./modules/newsletter/newsletter.service");
+const tasks = require("./modules/internal/internal.tasks");
 
-// Auto-publish scheduled drafts whose publishAt has passed. Runs every minute.
-const publishScheduledDrafts = async () => {
+/**
+ * In-process background work.
+ *
+ * This is only correct for a deployment that runs exactly one long-lived
+ * instance. Under an autoscaler it is wrong in both directions:
+ *
+ *   - scale to zero means no container exists at the scheduled moment, so the
+ *     job silently never runs;
+ *   - scale out means every container runs it, so the job runs N times.
+ *
+ * For an idempotent job like publishing due drafts, running N times is
+ * harmless. For the newsletter digest it means N copies of the same email to
+ * every subscriber, which is why the digest is never started here on a
+ * serverless platform — SCHEDULER_MODE defaults to "external" there, and an
+ * external scheduler calls the task endpoints exactly once instead.
+ */
+const started = [];
+
+const safely = (name, fn) => async () => {
   try {
-    const result = await prisma.article.updateMany({
-      where: { published: false, publishAt: { not: null, lte: new Date() } },
-      data: { published: true },
-    });
-    if (result.count > 0) logger.info(`Scheduler: auto-published ${result.count} article(s)`);
+    const result = await fn();
+    if (result && Object.values(result).some((v) => typeof v === "number" && v > 0)) {
+      logger.info("Scheduled task ran", { task: name, ...result });
+    }
   } catch (err) {
-    logger.error(`Draft scheduler failed: ${err.message}`);
+    // A throw inside a cron tick is unhandled and would take the process down.
+    logger.error("Scheduled task failed", { task: name, message: err.message });
   }
+};
+
+const schedule = (name, expression, fn) => {
+  if (!cron.validate(expression)) {
+    logger.warn("Invalid cron expression, task disabled", { task: name, expression });
+    return;
+  }
+  const job = cron.schedule(expression, safely(name, fn));
+  started.push({ name, expression, job });
+  logger.info("Scheduled task registered", { task: name, expression });
 };
 
 const startScheduler = () => {
-  cron.schedule("* * * * *", publishScheduledDrafts);
-  logger.info("Scheduler: draft auto-publish enabled (every minute)");
+  if (config.schedulerMode === "off") {
+    logger.info("Scheduler disabled (SCHEDULER_MODE=off)");
+    return { mode: "off", tasks: [] };
+  }
 
-  // Weekly newsletter digest — opt-in (sends real emails).
+  if (config.schedulerMode === "external") {
+    logger.info("Scheduler delegated to an external trigger", {
+      platform: platform.name,
+      endpoints: [
+        "POST /internal/tasks/publish-scheduled",
+        "POST /internal/tasks/newsletter-digest",
+        "POST /internal/tasks/maintenance",
+      ],
+    });
+    return { mode: "external", tasks: [] };
+  }
+
+  // Idempotent, so duplicate execution across instances is safe.
+  schedule(
+    "publish-scheduled",
+    process.env.PUBLISH_SCHEDULE_CRON || "* * * * *",
+    tasks.publishScheduledDrafts
+  );
+
+  schedule("maintenance", process.env.MAINTENANCE_CRON || "17 3 * * *", tasks.runMaintenance);
+
+  // Opt-in, and only ever from a single-instance deployment: this one sends
+  // real email and duplicate runs are visible to every subscriber.
   if (process.env.NEWSLETTER_DIGEST_ENABLED === "true") {
-    const expr = process.env.NEWSLETTER_DIGEST_CRON || "0 9 * * 1"; // Mondays 09:00
-    if (cron.validate(expr)) {
-      cron.schedule(expr, async () => {
-        try {
-          const r = await newsletterService.sendDigest();
-          logger.info(`Scheduler: ${r.message}`);
-        } catch (err) {
-          logger.error(`Digest cron failed: ${err.message}`);
-        }
-      });
-      logger.info(`Scheduler: newsletter digest enabled (${expr})`);
+    if (platform.maxInstances > 1) {
+      logger.warn(
+        "Newsletter digest cron refused: MAX_INSTANCES > 1 would send duplicate emails. Drive it from an external scheduler via POST /internal/tasks/newsletter-digest instead.",
+        { maxInstances: platform.maxInstances }
+      );
     } else {
-      logger.warn(`Invalid NEWSLETTER_DIGEST_CRON: "${expr}" — digest disabled`);
+      schedule(
+        "newsletter-digest",
+        process.env.NEWSLETTER_DIGEST_CRON || "0 9 * * 1",
+        tasks.sendNewsletterDigest
+      );
     }
   }
+
+  return { mode: "cron", tasks: started.map((t) => ({ name: t.name, expression: t.expression })) };
 };
 
-module.exports = { startScheduler };
+/** Stops every timer so a shutdown is not held open by a pending tick. */
+const stopScheduler = () => {
+  for (const { job } of started) {
+    try {
+      job.stop();
+    } catch {
+      /* already stopped */
+    }
+  }
+  started.length = 0;
+};
+
+module.exports = { startScheduler, stopScheduler };

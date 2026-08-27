@@ -1,18 +1,13 @@
 const articleService = require("./article.service");
-const { createArticleSchema, updateArticleSchema, listArticlesSchema } = require("./article.validation");
-const { sendSuccess, sendError } = require("../../utils/response");
+const { validated } = require("../../middleware/validate.middleware");
+const { sendSuccess } = require("../../utils/response");
 const { logAudit } = require("../../utils/audit");
 
 const listArticles = async (req, res, next) => {
   try {
-    const { error, value } = listArticlesSchema.validate(req.query, { abortEarly: false });
-    if (error) {
-      return sendError(res, 400, "Validation failed", error.details.map((d) => d.message));
-    }
-    if (!req.user || req.user.role !== "ADMIN") {
-      value.published = true;
-    }
-    const result = await articleService.listArticles(value);
+    // Authorisation lives in the service, which decides what this viewer may
+    // see; the controller never pre-filters, so there is one rule, not two.
+    const result = await articleService.listArticles(validated(req, "query"), req.user);
     return sendSuccess(res, 200, "Articles fetched", result);
   } catch (err) {
     next(err);
@@ -21,7 +16,7 @@ const listArticles = async (req, res, next) => {
 
 const getArticle = async (req, res, next) => {
   try {
-    const article = await articleService.getArticleBySlug(req.params.slug);
+    const article = await articleService.getArticleBySlug(req.params.slug, req.user);
     return sendSuccess(res, 200, "Article fetched", article);
   } catch (err) {
     next(err);
@@ -30,7 +25,7 @@ const getArticle = async (req, res, next) => {
 
 const getRelated = async (req, res, next) => {
   try {
-    const related = await articleService.getRelated(req.params.slug);
+    const related = await articleService.getRelated(req.params.slug, req.user);
     return sendSuccess(res, 200, "Related articles", related);
   } catch (err) {
     next(err);
@@ -39,12 +34,13 @@ const getRelated = async (req, res, next) => {
 
 const createArticle = async (req, res, next) => {
   try {
-    const { error, value } = createArticleSchema.validate(req.body, { abortEarly: false });
-    if (error) {
-      return sendError(res, 400, "Validation failed", error.details.map((d) => d.message));
-    }
-    const article = await articleService.createArticle(req.user.uuid, value);
-    logAudit("article.create", { actorUuid: req.user.uuid, actorEmail: req.user.email, ip: req.ip, detail: article.title });
+    const article = await articleService.createArticle(req.user.uuid, req.body);
+    logAudit("article.create", {
+      actorUuid: req.user.uuid,
+      actorEmail: req.user.email,
+      ip: req.ip,
+      detail: article.title,
+    });
     return sendSuccess(res, 201, "Article created", article);
   } catch (err) {
     next(err);
@@ -53,12 +49,13 @@ const createArticle = async (req, res, next) => {
 
 const updateArticle = async (req, res, next) => {
   try {
-    const { error, value } = updateArticleSchema.validate(req.body, { abortEarly: false });
-    if (error) {
-      return sendError(res, 400, "Validation failed", error.details.map((d) => d.message));
-    }
-    const article = await articleService.updateArticleByUuid(req.params.uuid, value);
-    logAudit("article.update", { actorUuid: req.user.uuid, actorEmail: req.user.email, ip: req.ip, detail: article.title });
+    const article = await articleService.updateArticleByUuid(req.params.uuid, req.body);
+    logAudit("article.update", {
+      actorUuid: req.user.uuid,
+      actorEmail: req.user.email,
+      ip: req.ip,
+      detail: article.title,
+    });
     return sendSuccess(res, 200, "Article updated", article);
   } catch (err) {
     next(err);
@@ -68,11 +65,23 @@ const updateArticle = async (req, res, next) => {
 const deleteArticle = async (req, res, next) => {
   try {
     await articleService.deleteArticleByUuid(req.params.uuid);
-    logAudit("article.delete", { actorUuid: req.user.uuid, actorEmail: req.user.email, ip: req.ip, detail: req.params.uuid });
+    logAudit("article.delete", {
+      actorUuid: req.user.uuid,
+      actorEmail: req.user.email,
+      ip: req.ip,
+      detail: req.params.uuid,
+    });
     return sendSuccess(res, 200, "Article deleted");
   } catch (err) {
     next(err);
   }
 };
 
-module.exports = { listArticles, getArticle, getRelated, createArticle, updateArticleByUuid: updateArticle, deleteArticleByUuid: deleteArticle };
+module.exports = {
+  listArticles,
+  getArticle,
+  getRelated,
+  createArticle,
+  updateArticleByUuid: updateArticle,
+  deleteArticleByUuid: deleteArticle,
+};

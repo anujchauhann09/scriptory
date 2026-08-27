@@ -1,6 +1,7 @@
 require("dotenv").config();
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
+const { readSecret } = require("../config/secrets");
 
 const prisma = new PrismaClient();
 
@@ -16,7 +17,9 @@ function isWeakPassword(pw = "") {
 
 async function main() {
   const email = process.env.ADMIN_EMAIL || "";
-  const password = process.env.ADMIN_PASSWORD || "";
+  // Also honours ADMIN_PASSWORD_FILE, so a mounted secret can seed a
+  // production database without the value ever entering the environment.
+  const password = readSecret("ADMIN_PASSWORD") || "";
 
   if (!email || !password) {
     console.error(
@@ -26,11 +29,21 @@ async function main() {
   }
 
   if (isWeakPassword(password)) {
-    console.warn(
-      "\n WARNING: ADMIN_PASSWORD looks weak. Use a strong, unique value in .env " +
-        "(12+ chars, mixed character types, no common words/sequences), and enable 2FA " +
-        "on the admin account after first login.\n"
-    );
+    const warning =
+      "ADMIN_PASSWORD looks weak. Use a strong, unique value " +
+      "(12+ chars, mixed character types, no common words or sequences), and enable 2FA " +
+      "on the admin account after first login.";
+
+    // A weak admin password in production is not a warning, it is the whole
+    // attack. The seed refuses rather than creating an account that a
+    // dictionary attack would open — and the account it creates has every
+    // administrative privilege in the system.
+    if (process.env.NODE_ENV === "production") {
+      console.error(`\nRefusing to seed: ${warning}\n`);
+      process.exitCode = 1;
+      return;
+    }
+    console.warn(`\nWARNING: ${warning}\n`);
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });

@@ -45,6 +45,23 @@ export const ArticleCard = ({ article, index }: ArticleCardProps) => {
 
       <div className="flex flex-1 flex-col gap-2 p-5">
         <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          {/*
+            Rendered only when the article has been filed. An uncategorised
+            article shows the date and reading time exactly as it always has —
+            no placeholder, no "Uncategorised" label, no layout shift.
+          */}
+          {article.category && (
+            <>
+              <Link
+                to={`/articles?category=${encodeURIComponent(article.category.slug)}`}
+                onClick={(e) => e.stopPropagation()}
+                className="font-semibold uppercase tracking-wide text-brand transition-opacity hover:opacity-80"
+              >
+                {article.category.name}
+              </Link>
+              <span className="text-brand">·</span>
+            </>
+          )}
           <span>{formattedDate}</span>
           <span className="text-brand">·</span>
           <span>{article.readingTime ?? 1} min read</span>

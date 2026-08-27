@@ -12,8 +12,7 @@ const getMe = async (req, res, next) => {
 
 const updateProfile = async (req, res, next) => {
   try {
-    const { name, bio, avatarUrl } = req.body;
-    const profile = await userService.updateProfile(req.user.uuid, { name, bio, avatarUrl });
+    const profile = await userService.updateProfile(req.user.uuid, req.body);
     return sendSuccess(res, 200, "Profile updated", profile);
   } catch (err) {
     next(err);

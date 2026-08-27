@@ -1,5 +1,93 @@
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+/** Requests that outlive this are abandoned rather than left hanging forever. */
+const REQUEST_TIMEOUT_MS = 20000;
+
+/**
+ * Raised when the API rejects a request as unauthenticated.
+ *
+ * Callers can tell "your session ended" apart from "that request failed",
+ * which is what lets the auth layer sign the user out instead of showing a
+ * generic error on every subsequent call.
+ */
+export class UnauthorizedError extends Error {
+  constructor(message = 'Your session has ended. Please sign in again.') {
+    super(message);
+    this.name = 'UnauthorizedError';
+  }
+}
+
+/** Raised when a rate limit is hit, carrying the server's retry hint. */
+export class RateLimitedError extends Error {
+  retryAfterSeconds?: number;
+  constructor(message: string, retryAfterSeconds?: number) {
+    super(message);
+    this.name = 'RateLimitedError';
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+type UnauthorizedHandler = () => void;
+let onUnauthorized: UnauthorizedHandler | null = null;
+
+/** Registered by the auth context so a 401 anywhere clears the session once. */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null) {
+  onUnauthorized = handler;
+}
+
+/**
+ * Reads a response body defensively.
+ *
+ * The previous implementation called `res.json()` unconditionally. That throws
+ * an opaque `SyntaxError` for any response that is not JSON — a 204, a load
+ * balancer's HTML 502, or a proxy timeout page — and the user saw
+ * "Unexpected token '<'" instead of anything actionable. Behind a managed load
+ * balancer those responses are routine, so this has to be handled, not assumed
+ * away.
+ */
+async function readBody(res: Response): Promise<any> {
+  if (res.status === 204 || res.headers.get('content-length') === '0') return {};
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    // Read and discard so the connection can be reused; never surface the body
+    // itself, which may be an infrastructure error page.
+    await res.text().catch(() => '');
+    return {};
+  }
+  return res.json().catch(() => ({}));
+}
+
+function errorFor(res: Response, body: any): Error {
+  const message = typeof body?.message === 'string' ? body.message : null;
+
+  if (res.status === 401) return new UnauthorizedError(message || undefined);
+
+  if (res.status === 429) {
+    const retryAfter = Number(res.headers.get('retry-after'));
+    return new RateLimitedError(
+      message || 'Too many requests. Please wait a moment and try again.',
+      Number.isFinite(retryAfter) ? retryAfter : undefined
+    );
+  }
+
+  if (res.status === 403) {
+    return new Error(message || 'You do not have permission to do that.');
+  }
+
+  if (res.status >= 500) {
+    // 5xx messages are deliberately generic server-side; the request id, when
+    // present, is what support can actually trace.
+    const requestId = body?.errors?.requestId;
+    return new Error(
+      requestId
+        ? `Something went wrong on our end. Reference: ${requestId}`
+        : 'Something went wrong on our end. Please try again shortly.'
+    );
+  }
+
+  return new Error(message || 'Something went wrong. Please try again.');
+}
+
 // auth is carried by an httpOnly cookie (not readable by JS), so every request
 // must send credentials
 async function request<T>(
@@ -11,19 +99,53 @@ async function request<T>(
     ...(options.headers as Record<string, string>),
   };
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}`, { ...options, credentials: 'include', headers });
-  } catch {
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      credentials: 'include',
+      headers,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if ((err as Error)?.name === 'AbortError') {
+      throw new Error('The request timed out. Please try again.');
+    }
     throw new Error('Unable to connect to the server. Please try again later.');
+  } finally {
+    clearTimeout(timer);
   }
 
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.message || 'Something went wrong. Please try again.');
-  return json.data as T;
+  const body = await readBody(res);
+
+  if (!res.ok) {
+    const error = errorFor(res, body);
+    // One place decides what an expired session means, rather than each caller
+    // guessing from an error string.
+    if (error instanceof UnauthorizedError) onUnauthorized?.();
+    throw error;
+  }
+
+  return body.data as T;
 }
 
 export interface ApiTag { name: string; articleCount?: number }
+
+/** A curated learning category. Distinct from tags: closed set, at most one per article. */
+export interface ApiCategory {
+  slug: string;
+  name: string;
+  description?: string | null;
+  /** Position in the intended learning progression, ascending. */
+  sortOrder: number;
+  articleCount: number;
+}
+
+/** The category shape embedded in an article payload. */
+export interface ApiArticleCategory { slug: string; name: string }
 
 export interface ApiArticle {
   uuid: string;
@@ -40,6 +162,12 @@ export interface ApiArticle {
   publishAt?: string | null;
   viewCount: number;
   tags: string[];
+  /**
+   * Optional by design. The API always sends the key, using null for an article
+   * that has not been filed — so this is `null`, never absent, and callers can
+   * branch on it directly.
+   */
+  category?: ApiArticleCategory | null;
   author: {
     uuid: string;
     profile?: { name?: string; avatarUrl?: string };
@@ -70,6 +198,12 @@ export interface ArticlePayload {
   series?: string | null;
   seriesOrder?: number | null;
   publishAt?: string | null;
+  /**
+   * Category slug, or null to leave the article uncategorised. Omitting the
+   * field on an update leaves the existing category untouched; sending null
+   * clears it.
+   */
+  category?: string | null;
 }
 
 export const articlesApi = {
@@ -85,8 +219,6 @@ export const articlesApi = {
     request<ApiArticle>(`/articles/${uuid}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (uuid: string) =>
     request<null>(`/articles/${uuid}`, { method: 'DELETE' }),
-  incrementView: (id: number) =>
-    request<{ count: number }>(`/articles/${id}/views`, { method: 'POST' }),
   incrementViewBySlug: (slug: string) =>
     request<{ count: number }>(`/articles/${slug}/views`, { method: 'POST' }),
 };
@@ -121,6 +253,57 @@ export const tagsApi = {
   list: () => request<ApiTag[]>('/tags'),
 };
 
+/** Admin view: adds draft counts, which readers never see. */
+export interface AdminCategory extends ApiCategory {
+  /** Every article filed here, drafts included — the number that matters on delete. */
+  articleCount: number;
+  /** Published only — the number readers see. */
+  publishedCount: number;
+  createdAt: string;
+}
+
+export interface CategoryPayload {
+  name: string;
+  /** Derived from the name when omitted. */
+  slug?: string;
+  description?: string | null;
+}
+
+export interface DeletedCategory {
+  slug: string;
+  name: string;
+  /** Articles moved to uncategorised. They are never deleted. */
+  unfiled: number;
+}
+
+/**
+ * Reading the taxonomy is public; changing it is admin-only and enforced server
+ * side. Note there is deliberately no way to create a category as a side effect
+ * of writing an article — that separation is what keeps a typo in the editor
+ * from becoming a permanent top-level category.
+ */
+export const categoriesApi = {
+  list: () => request<ApiCategory[]>('/categories'),
+
+  // Admin only — the server enforces the ADMIN role on all of these.
+  listForAdmin: () => request<AdminCategory[]>('/categories/manage'),
+  create: (data: CategoryPayload) =>
+    request<AdminCategory>('/categories', { method: 'POST', body: JSON.stringify(data) }),
+  update: (slug: string, data: Partial<CategoryPayload>) =>
+    request<ApiCategory & { slugChanged: boolean; previousSlug: string }>(
+      `/categories/${encodeURIComponent(slug)}`,
+      { method: 'PATCH', body: JSON.stringify(data) }
+    ),
+  remove: (slug: string) =>
+    request<DeletedCategory>(`/categories/${encodeURIComponent(slug)}`, { method: 'DELETE' }),
+  /** Sends the complete desired order; applied atomically. */
+  reorder: (order: string[]) =>
+    request<AdminCategory[]>('/categories/order', {
+      method: 'PUT',
+      body: JSON.stringify({ order }),
+    }),
+};
+
 export interface SiteStats { articles: number; views: number; topics: number }
 
 export const statsApi = {
@@ -136,18 +319,55 @@ export const bookmarksApi = {
 
 export interface UploadResult { url: string; publicId: string }
 
+/** Mirrors the server's own file limits so an oversized file fails instantly
+ *  instead of after a full upload. */
+const MAX_UPLOAD_BYTES: Record<string, number> = {
+  '/upload/cover': 5 * 1024 * 1024,
+  '/upload/inline': 5 * 1024 * 1024,
+  '/upload/avatar': 2 * 1024 * 1024,
+};
+
+const ACCEPTED_IMAGE_TYPES = /^image\/(jpeg|png|webp|avif|gif)$/;
+
 async function uploadFile(endpoint: string, file: File): Promise<UploadResult> {
+  if (!ACCEPTED_IMAGE_TYPES.test(file.type)) {
+    throw new Error('Please choose a JPEG, PNG, WebP, AVIF or GIF image.');
+  }
+  const limit = MAX_UPLOAD_BYTES[endpoint];
+  if (limit && file.size > limit) {
+    throw new Error(`That image is too large. The maximum is ${Math.round(limit / 1024 / 1024)}MB.`);
+  }
+
   const form = new FormData();
   form.append('image', file);
 
-  const res = await fetch(`${BASE}${endpoint}`, {
-    method: 'POST',
-    credentials: 'include',
-    body: form,
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.message || 'Upload failed');
-  return json.data as UploadResult;
+  const controller = new AbortController();
+  // Uploads legitimately take longer than an API call.
+  const timer = setTimeout(() => controller.abort(), 60000);
+
+  let res: Response;
+  try {
+    // No Content-Type header: the browser must set the multipart boundary.
+    res = await fetch(`${BASE}${endpoint}`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if ((err as Error)?.name === 'AbortError') throw new Error('The upload timed out.');
+    throw new Error('Unable to reach the server. Please try again.');
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const body = await readBody(res);
+  if (!res.ok) {
+    const error = errorFor(res, body);
+    if (error instanceof UnauthorizedError) onUnauthorized?.();
+    throw error;
+  }
+  return body.data as UploadResult;
 }
 
 export const uploadApi = {
@@ -245,8 +465,17 @@ export const authApi = {
     } catch {
       throw new Error('Unable to connect to the server. Please try again later.');
     }
-    const json = await res.json().catch(() => ({} as any));
+    const json = await readBody(res);
+    // A 2FA challenge is a 401, but it is not an expired session — it must not
+    // trigger the global sign-out handler.
     if (res.status === 401 && json.twoFactorRequired) throw new TwoFactorRequiredError();
+    if (res.status === 429) {
+      const retryAfter = Number(res.headers.get('retry-after'));
+      throw new RateLimitedError(
+        json.message || 'Too many sign-in attempts. Please wait before trying again.',
+        Number.isFinite(retryAfter) ? retryAfter : undefined
+      );
+    }
     if (!res.ok) throw new Error(json.message || 'Login failed');
     return json.data.user as AuthUserPayload;
   },

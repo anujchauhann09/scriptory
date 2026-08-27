@@ -27,12 +27,12 @@ model User {
 
   // bumped to invalidate every outstanding JWT for this user (logout-everywhere,
   // password change, 2FA change). The token embeds the version it was signed with
-  tokenVersion       Int      @default(0)
+  tokenVersion Int @default(0)
 
   // TOTP two-factor auth
-  twoFactorEnabled   Boolean  @default(false)
-  twoFactorSecret    String?  // active secret once enabled
-  twoFactorPending   String?  // temp secret during setup, before first verification
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String? // active secret once enabled
+  twoFactorPending String? // temp secret during setup, before first verification
 
   profile   Profile?
   articles  Article[]
@@ -57,6 +57,22 @@ model AuditLog {
   @@index([action])
 }
 
+/// Cross-instance brute-force counter for credential endpoints.
+///
+/// In-process rate limiting is per container, so under autoscaling an attacker's
+/// guess budget multiplies by the instance count. Credential guessing is the one
+/// case where that is unacceptable, so the counter lives in the database every
+/// instance already shares — no Redis, no external rate-limit service.
+/// Rows are short-lived and pruned by the maintenance task.
+model LoginThrottle {
+  key         String   @id // "email:<address>" or "ip:<client key>"
+  failures    Int      @default(0)
+  windowStart DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([updatedAt])
+}
+
 model Profile {
   id        Int     @id @default(autoincrement())
   uuid      String  @unique @default(uuid())
@@ -68,38 +84,49 @@ model Profile {
 }
 
 model Article {
-  id         Int      @id @default(autoincrement())
-  uuid       String   @unique @default(uuid())
-  title      String
-  subtitle   String?
-  slug       String   @unique
-  excerpt    String?
-  content    String
-  coverImage String?
-  published  Boolean  @default(true)
-  publishAt  DateTime?  // when set in the future, a cron auto-publishes it
-  embedding  Json?      // content-similarity vector for "related posts"
+  id          Int            @id @default(autoincrement())
+  uuid        String         @unique @default(uuid())
+  title       String
+  subtitle    String?
+  slug        String         @unique
+  excerpt     String?
+  content     String
+  coverImage  String?
+  published   Boolean        @default(true)
+  publishAt   DateTime? // when set in the future, a cron auto-publishes it
+  embedding   Json? // content-similarity vector for "related posts"
   readingTime Int?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  authorId   Int
-  author     User         @relation(fields: [authorId], references: [id])
-  tags       TagOnArticle[]
-  comments   Comment[]
-  views      View?
-  likes      Like[]
-  bookmarks  Bookmark[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  authorId    Int
+  author      User           @relation(fields: [authorId], references: [id])
+  tags        TagOnArticle[]
+  comments    Comment[]
+  views       View?
+  likes       Like[]
+  bookmarks   Bookmark[]
 
   // Optional membership in a multi-part series
   seriesId    Int?
   seriesOrder Int?
-  series      Series?  @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  series      Series? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+
+  // Optional learning category. Nullable by design: an article may be published
+  // with no category at all, and may be filed (or re-filed) later without any
+  // change to the article itself. SetNull, never Cascade — retiring a category
+  // must unfile its articles, never delete them.
+  categoryId Int?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@index([authorId])
   @@index([createdAt])
   @@index([published])
   @@index([authorId, createdAt])
   @@index([seriesId])
+  @@index([categoryId])
+  // Serves the common listing query: published articles in one category, newest
+  // first.
+  @@index([categoryId, published, createdAt])
 }
 
 model Bookmark {
@@ -107,21 +134,47 @@ model Bookmark {
   userId    Int
   articleId Int
   createdAt DateTime @default(now())
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
 
   @@unique([userId, articleId])
   @@index([userId])
   @@index([articleId])
 }
 
-model Series {
-  id          Int      @id @default(autoincrement())
-  uuid        String   @unique @default(uuid())
-  title       String
-  slug        String   @unique
+/// A curated learning category — the top-level shelf an article sits on.
+///
+/// Deliberately different from Tag and Series, which both auto-create whatever
+/// name the editor types:
+///   - Tag is an open vocabulary, many per article (free-form topics).
+///   - Series is a *sequence* of parts within one multi-part piece.
+///   - Category is a CLOSED vocabulary, at most one per article, and is the
+///     stable structure the site's learning path is organised around.
+///
+/// Rows are seeded by migration rather than created on demand, so a typo in the
+/// editor can never mint "Backened Engineering" as a permanent category.
+model Category {
+  id          Int       @id @default(autoincrement())
+  uuid        String    @unique @default(uuid())
+  /// URL-safe identifier; what the API and query params speak in.
+  slug        String    @unique
+  name        String    @unique
   description String?
-  createdAt   DateTime @default(now())
+  /// Position in the intended learning progression, ascending.
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  articles    Article[]
+
+  @@index([sortOrder])
+}
+
+model Series {
+  id          Int       @id @default(autoincrement())
+  uuid        String    @unique @default(uuid())
+  title       String
+  slug        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
   articles    Article[]
 }
 
@@ -149,8 +202,8 @@ model Comment {
   createdAt DateTime @default(now())
   userId    Int
   articleId Int
-  user      User    @relation(fields: [userId], references: [id])
-  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
 
   @@index([articleId])
   @@index([userId])
@@ -159,11 +212,11 @@ model Comment {
 }
 
 model View {
-  id        Int    @id @default(autoincrement())
-  uuid      String @unique @default(uuid())
-  articleId Int    @unique
-  count     Int    @default(0)
-  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  id        Int          @id @default(autoincrement())
+  uuid      String       @unique @default(uuid())
+  articleId Int          @unique
+  count     Int          @default(0)
+  article   Article      @relation(fields: [articleId], references: [id], onDelete: Cascade)
   records   ViewRecord[]
 }
 
@@ -171,11 +224,11 @@ model ViewRecord {
   id          Int      @id @default(autoincrement())
   articleId   Int
   viewId      Int
-  userId      Int?     // null = anonymous
-  fingerprint String   // IP+UA hash for anonymous, uuid for logged-in
+  userId      Int? // null = anonymous
+  fingerprint String // IP+UA hash for anonymous, uuid for logged-in
   createdAt   DateTime @default(now())
 
-  view    View    @relation(fields: [viewId], references: [id], onDelete: Cascade)
+  view View @relation(fields: [viewId], references: [id], onDelete: Cascade)
 
   // One unique view per viewer per article
   @@unique([articleId, fingerprint])
@@ -188,8 +241,8 @@ model Like {
   userId    Int
   articleId Int
   createdAt DateTime @default(now())
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
 
   @@unique([userId, articleId])
   @@index([articleId])

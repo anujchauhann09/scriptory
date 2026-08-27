@@ -1,7 +1,19 @@
 const { Prisma } = require("@prisma/client");
 const prisma = require("../../config/db");
+const memo = require("../../utils/memoCache");
 
-const getOverview = async () => {
+/**
+ * Dashboard overview.
+ *
+ * Every query here is an unfiltered aggregate over a whole table, so the result
+ * is memoised briefly - an admin holding down refresh should not be able to
+ * schedule a dozen sequential scans of the view table.
+ */
+const OVERVIEW_CACHE_TTL_MS = Number(process.env.ANALYTICS_CACHE_TTL_MS) || 60 * 1000;
+
+const getOverview = () => memo.remember("stats:analytics", OVERVIEW_CACHE_TTL_MS, computeOverview);
+
+const computeOverview = async () => {
   const [
     articles,
     published,

@@ -1,0 +1,17 @@
+# Keep credentials, local state and build tooling out of the image. Anything
+# listed here is also excluded from the build context sent to the daemon, which
+# is the difference between a fast build and uploading node_modules every time.
+node_modules
+npm-debug.log*
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+tests
+coverage
+*.log
+.DS_Store
+Dockerfile
+.dockerignore
+README.md

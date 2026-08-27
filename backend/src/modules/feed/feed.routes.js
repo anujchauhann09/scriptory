@@ -1,10 +1,19 @@
 const { Router } = require("express");
 const prisma = require("../../config/db");
 const config = require("../../config/env");
+const memo = require("../../utils/memoCache");
+const limits = require("../../middleware/rateLimit.middleware");
 
 const router = Router();
 
 const SITE = config.frontendUrl.replace(/\/$/, "");
+
+/**
+ * Feeds are polled by crawlers on a schedule and are identical for everyone, so
+ * they are memoised and served with a public cache lifetime. Without this, a
+ * sitemap request reads up to a thousand rows every time an aggregator checks.
+ */
+const FEED_CACHE_TTL_MS = Number(process.env.FEED_CACHE_TTL_MS) || 10 * 60 * 1000;
 
 const escapeXml = (str = "") =>
   str.replace(/[<>&'"]/g, (c) =>
@@ -20,22 +29,23 @@ const publishedArticles = (limit) =>
   });
 
 // RSS 2.0 feed
-router.get("/rss.xml", async (req, res, next) => {
+router.get("/rss.xml", limits.feed, async (req, res, next) => {
   try {
-    const articles = await publishedArticles(50);
-    const items = articles
-      .map(
-        (a) => `    <item>
+    const xml = await memo.remember("feed:rss", FEED_CACHE_TTL_MS, async () => {
+      const articles = await publishedArticles(50);
+      const items = articles
+        .map(
+          (a) => `    <item>
       <title>${escapeXml(a.title)}</title>
-      <link>${SITE}/articles/${a.slug}</link>
-      <guid isPermaLink="true">${SITE}/articles/${a.slug}</guid>
+      <link>${SITE}/articles/${escapeXml(a.slug)}</link>
+      <guid isPermaLink="true">${SITE}/articles/${escapeXml(a.slug)}</guid>
       <description>${escapeXml(a.excerpt || "")}</description>
       <pubDate>${new Date(a.createdAt).toUTCString()}</pubDate>
     </item>`
-      )
-      .join("\n");
+        )
+        .join("\n");
 
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+      return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Scriptory</title>
@@ -46,8 +56,10 @@ router.get("/rss.xml", async (req, res, next) => {
 ${items}
   </channel>
 </rss>`;
+    });
 
     res.set("Content-Type", "application/rss+xml; charset=utf-8");
+    res.set("Cache-Control", "public, max-age=600");
     return res.send(xml);
   } catch (err) {
     next(err);
@@ -55,26 +67,29 @@ ${items}
 });
 
 // XML sitemap
-router.get("/sitemap.xml", async (req, res, next) => {
+router.get("/sitemap.xml", limits.feed, async (req, res, next) => {
   try {
-    const articles = await publishedArticles(1000);
-    const staticPages = ["", "/articles", "/about", "/contact"];
-    const urls = [
-      ...staticPages.map((p) => `  <url><loc>${SITE}${p}</loc></url>`),
-      ...articles.map(
-        (a) =>
-          `  <url><loc>${SITE}/articles/${a.slug}</loc><lastmod>${new Date(
-            a.updatedAt
-          ).toISOString()}</lastmod></url>`
-      ),
-    ].join("\n");
+    const xml = await memo.remember("feed:sitemap", FEED_CACHE_TTL_MS, async () => {
+      const articles = await publishedArticles(1000);
+      const staticPages = ["", "/articles", "/about", "/contact"];
+      const urls = [
+        ...staticPages.map((p) => `  <url><loc>${SITE}${p}</loc></url>`),
+        ...articles.map(
+          (a) =>
+            `  <url><loc>${SITE}/articles/${escapeXml(a.slug)}</loc><lastmod>${new Date(
+              a.updatedAt
+            ).toISOString()}</lastmod></url>`
+        ),
+      ].join("\n");
 
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+      return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls}
 </urlset>`;
+    });
 
     res.set("Content-Type", "application/xml; charset=utf-8");
+    res.set("Cache-Control", "public, max-age=600");
     return res.send(xml);
   } catch (err) {
     next(err);
@@ -82,9 +97,14 @@ ${urls}
 });
 
 // robots.txt
-router.get("/robots.txt", (req, res) => {
+router.get("/robots.txt", limits.feed, (req, res) => {
   res.set("Content-Type", "text/plain; charset=utf-8");
-  return res.send(`User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n`);
+  res.set("Cache-Control", "public, max-age=3600");
+  // The API's own paths are not content and should never be indexed; the
+  // unsubscribe path in particular must never be crawled with a live token.
+  return res.send(
+    `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /og/\n\nSitemap: ${SITE}/sitemap.xml\n`
+  );
 });
 
 module.exports = router;

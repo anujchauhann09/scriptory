@@ -10,6 +10,8 @@ const router = Router();
 router.get("/", authMiddleware, adminMiddleware, async (req, res, next) => {
   try {
     const data = await analyticsService.getOverview();
+    // Aggregate business data for one admin; never cacheable by a proxy.
+    res.set("Cache-Control", "no-store");
     return sendSuccess(res, 200, "Analytics fetched", data);
   } catch (err) {
     next(err);

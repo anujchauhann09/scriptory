@@ -3,7 +3,7 @@ const { sendSuccess } = require("../../utils/response");
 
 const status = async (req, res, next) => {
   try {
-    const result = await bookmarkService.getStatus(req.user.uuid, req.params.slug);
+    const result = await bookmarkService.getStatus(req.user.uuid, req.params.slug, req.user);
     return sendSuccess(res, 200, "Bookmark status", result);
   } catch (err) {
     next(err);
@@ -12,7 +12,7 @@ const status = async (req, res, next) => {
 
 const toggle = async (req, res, next) => {
   try {
-    const result = await bookmarkService.toggle(req.user.uuid, req.params.slug);
+    const result = await bookmarkService.toggle(req.user.uuid, req.params.slug, req.user);
     return sendSuccess(res, 200, result.bookmarked ? "Bookmarked" : "Bookmark removed", result);
   } catch (err) {
     next(err);

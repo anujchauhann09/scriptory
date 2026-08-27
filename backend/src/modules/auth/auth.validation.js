@@ -14,16 +14,23 @@ const totpCode = Joi.string()
   .pattern(/^\d{6}$/)
   .messages({ "string.pattern.base": "Enter the 6-digit code from your authenticator app" });
 
+// `tlds: false` keeps Joi from rejecting valid addresses on new or internal
+// TLDs; the format check is what matters here, not a registry lookup.
+const email = Joi.string().trim().lowercase().email({ tlds: false }).max(255);
+
 const registerSchema = Joi.object({
-  email: Joi.string().email().required(),
+  email: email.required(),
   password: password.required(),
-  name: Joi.string().max(100).optional(),
+  name: Joi.string().trim().max(100).optional().allow(""),
 });
 
 const loginSchema = Joi.object({
-  email: Joi.string().email().required(),
-  password: Joi.string().required(),
-  totp: totpCode.optional(),
+  email: email.required(),
+  // Bounded so a multi-megabyte string cannot be pushed through bcrypt; the
+  // length is deliberately not validated against the registration rules, which
+  // would tell an attacker when a guess had the right shape.
+  password: Joi.string().max(200).required(),
+  totp: totpCode.optional().allow(""),
 });
 
 const changePasswordSchema = Joi.object({

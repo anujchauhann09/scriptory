@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { authApi, userApi } from '../lib/api';
+import { authApi, userApi, setUnauthorizedHandler } from '../lib/api';
 
 export type Role = 'ADMIN' | 'USER';
 
@@ -65,6 +65,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .catch(() => { if (!cancelled) applyUser(null); }) // 401 / offline → treat as signed out
       .finally(() => { if (!cancelled) setIsLoading(false); });
     return () => { cancelled = true; };
+  }, []);
+
+  /**
+   * Clear the session whenever any API call comes back unauthorised.
+   *
+   * The server can invalidate a token at any time — the password changed, 2FA
+   * was toggled, sessions were revoked elsewhere, or the cookie simply expired.
+   * Without this the app kept rendering a signed-in shell against a dead
+   * session, and every action failed with a generic error until the user
+   * reloaded. The cached snapshot is dropped too, so a refresh does not restore
+   * the illusion.
+   */
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setUser((prev) => {
+        if (prev) cacheUser(null);
+        return null;
+      });
+    });
+    return () => setUnauthorizedHandler(null);
   }, []);
 
   const login = async (email: string, password: string, totp?: string) => {

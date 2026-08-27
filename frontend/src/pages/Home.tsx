@@ -164,11 +164,15 @@ export const Home = () => {
                 <div className="mt-auto flex items-center gap-3">
                   <img
                     src={featuredArticle.author.profile?.avatarUrl || '/anuj.png'}
-                    alt={featuredArticle.author.profile?.name || featuredArticle.author.email}
+                    alt={featuredArticle.author.profile?.name || 'Author'}
                     className="h-9 w-9 rounded-full object-cover ring-2 ring-border"
                   />
                   <span className="text-sm font-medium">
-                    {featuredArticle.author.profile?.name || featuredArticle.author.email}
+                    {/* Falls back to a neutral label, never an email address: the API
+                        deliberately omits author emails from public article payloads,
+                        so this rendered `undefined` and would have published the
+                        author's address if it ever started sending one. */}
+                    {featuredArticle.author.profile?.name || 'Scriptory'}
                   </span>
                 </div>
               </div>

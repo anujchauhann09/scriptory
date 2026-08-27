@@ -1,8 +1,13 @@
 const logger = require("./logger");
+const { readSecret } = require("../config/secrets");
 
 // Content-similarity embeddings via Gemini. Gracefully no-ops when GEMINI_API_KEY
 // is unset — callers then fall back to tag-based related posts.
-const API_KEY = process.env.GEMINI_API_KEY;
+//
+// This key is server-side only. It was previously also injected into the
+// frontend bundle by the Vite config, which published it to every visitor;
+// that injection is gone and the key now exists in exactly one place.
+const API_KEY = readSecret("GEMINI_API_KEY");
 const MODEL = process.env.EMBEDDING_MODEL || "text-embedding-004";
 
 let client = null;

@@ -2,9 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { articlesApi, tagsApi, type ApiArticle, type ApiTag } from '../lib/api';
+import { articlesApi, tagsApi, categoriesApi, type ApiArticle, type ApiTag, type ApiCategory } from '../lib/api';
 import {
-  Search, Home, FileText, User, Mail, PenLine, Inbox, Sun, Moon, Hash, UserCircle, CornerDownLeft,
+  Search, Home, FileText, User, Mail, PenLine, Inbox, Sun, Moon, Hash, UserCircle, CornerDownLeft, Layers,
 } from 'lucide-react';
 
 interface Item {
@@ -21,6 +21,7 @@ export const CommandPalette = () => {
   const [debounced, setDebounced] = useState('');
   const [results, setResults] = useState<ApiArticle[]>([]);
   const [tags, setTags] = useState<ApiTag[]>([]);
+  const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [active, setActive] = useState(0);
 
   const navigate = useNavigate();
@@ -54,6 +55,7 @@ export const CommandPalette = () => {
       setQuery('');
       setActive(0);
       if (tags.length === 0) tagsApi.list().then(setTags).catch(() => {});
+      if (categories.length === 0) categoriesApi.list().then(setCategories).catch(() => {});
       const t = setTimeout(() => inputRef.current?.focus(), 20);
       document.body.style.overflow = 'hidden';
       return () => { clearTimeout(t); document.body.style.overflow = ''; };
@@ -97,6 +99,19 @@ export const CommandPalette = () => {
     .slice(0, 5)
     .map((t) => ({ id: `tag-${t.name}`, label: `#${t.name}`, icon: Hash, action: () => navigate(`/articles?tag=${encodeURIComponent(t.name)}`) }));
 
+  // Categories stay listed even with no query typed — they are the site's
+  // structure, so the palette doubles as a table of contents for the path.
+  const categoryItems: Item[] = categories
+    .filter((c) => !q || c.name.toLowerCase().includes(q))
+    .slice(0, 6)
+    .map((c) => ({
+      id: `cat-${c.slug}`,
+      label: c.name,
+      sub: 'Category',
+      icon: Layers,
+      action: () => navigate(`/articles?category=${encodeURIComponent(c.slug)}`),
+    }));
+
   const articleItems: Item[] = results.map((a) => ({
     id: `art-${a.uuid}`, label: a.title, sub: 'Article', icon: FileText,
     action: () => navigate(`/articles/${a.slug}`),
@@ -104,6 +119,7 @@ export const CommandPalette = () => {
 
   const groups = [
     { heading: 'Pages & actions', items: pages },
+    ...(categoryItems.length ? [{ heading: 'Learning path', items: categoryItems }] : []),
     ...(tagItems.length ? [{ heading: 'Tags', items: tagItems }] : []),
     ...(articleItems.length ? [{ heading: 'Articles', items: articleItems }] : []),
   ].filter((g) => g.items.length > 0);

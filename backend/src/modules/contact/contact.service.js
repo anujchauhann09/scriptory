@@ -5,8 +5,18 @@ const { sendMail } = require("../../config/mailer");
 const { renderEmail } = require("../../utils/emailTemplate");
 const logger = require("../../utils/logger");
 
+/**
+ * Keyed hash of the submitter's IP, kept for abuse triage.
+ *
+ * A plain SHA-256 of an IP address is not anonymisation: the whole IPv4 space
+ * can be enumerated in seconds, so the digest reverses trivially. Keying it
+ * with a server secret makes the stored value useless to anyone who obtains a
+ * database dump without also holding the key.
+ */
 const hash = (value) =>
-  value ? crypto.createHash("sha256").update(value).digest("hex").slice(0, 32) : null;
+  value
+    ? crypto.createHmac("sha256", config.jwtSecret).update(value).digest("hex").slice(0, 32)
+    : null;
 
 const escapeHtml = (str = "") =>
   str.replace(/[&<>"']/g, (c) =>

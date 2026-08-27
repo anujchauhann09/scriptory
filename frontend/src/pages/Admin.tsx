@@ -4,6 +4,7 @@ import { Container } from '../components/ui/Container';
 import { Section } from '../components/ui/Section';
 import { Badge } from '../components/ui/Badge';
 import { Skeleton } from '../components/ui/Skeleton';
+import { CategoriesPanel } from '../components/admin/CategoriesPanel';
 import {
   contactApi,
   newsletterApi,
@@ -17,11 +18,11 @@ import {
 import {
   Mail, Users, Inbox, RefreshCw, AlertCircle, Check, CircleCheck,
   Trash2, Download, Loader2, Activity, LayoutDashboard, Eye, Heart,
-  MessageSquare, FileText, TrendingUp, Send,
+  MessageSquare, FileText, TrendingUp, Send, Layers,
 } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 
-type Tab = 'overview' | 'messages' | 'subscribers' | 'activity';
+type Tab = 'overview' | 'categories' | 'messages' | 'subscribers' | 'activity';
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -130,6 +131,9 @@ export const Admin = () => {
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; count: number | null }[] = [
     { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" />, count: null },
+    // Count deliberately omitted: the taxonomy loads inside its own panel, so a
+    // number here would either be stale or force an extra request on every tab.
+    { key: 'categories', label: 'Categories', icon: <Layers className="h-4 w-4" />, count: null },
     { key: 'messages', label: 'Messages', icon: <Mail className="h-4 w-4" />, count: messages.length },
     { key: 'subscribers', label: 'Subscribers', icon: <Users className="h-4 w-4" />, count: subscribers.length },
     { key: 'activity', label: 'Activity', icon: <Activity className="h-4 w-4" />, count: audit.length },
@@ -214,6 +218,8 @@ export const Admin = () => {
             >
               {tab === 'overview' ? (
                 <OverviewPanel data={analytics} />
+              ) : tab === 'categories' ? (
+                <CategoriesPanel />
               ) : tab === 'messages' ? (
                 <MessagesList
                   messages={messages}

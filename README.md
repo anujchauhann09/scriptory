@@ -14,6 +14,7 @@ A full-stack blogging platform built with React + Node.js. Premium reading exper
 - **Full-markdown editor** (marked, CommonMark + GFM) — headings, nested lists, task lists, tables, fenced code, blockquotes, images, raw HTML — sanitized with DOMPurify
 - **Callout blocks** (`> [!NOTE]` / TIP / WARNING …), **collapsible `<details>`**, and **Mermaid diagrams** (```mermaid)
 - Cover image, tags, excerpt, **series/collections**, **draft scheduling** (`publishAt` + cron auto-publish)
+- **Learning categories** — a curated path (Backend Engineering → System Design → DSA & CS → Cloud → DevOps → AI/ML), **managed from Admin → Categories** (create / rename / reorder / delete). **Always optional:** an article can publish with no category and be filed later without touching the article; deleting a category unfiles its articles rather than deleting them. See [docs/content-strategy.md](docs/content-strategy.md)
 - **Full-text search** (Postgres FTS, relevance-ranked over title + excerpt + content)
 
 ### Reading experience
@@ -26,15 +27,24 @@ A full-stack blogging platform built with React + Node.js. Premium reading exper
 ### Accounts & security
 - **httpOnly-cookie sessions** — JWT never exposed to JS (XSS-safe); **TOTP 2FA**; **session revocation**
 - Constant-time login (no user enumeration), bcrypt (cost 12), change password, role-based access
-- **Audit log** of security & admin actions
+- **CSRF protection** by strict Origin verification on every cookie-authenticated state change
+- **Brute-force lockout** enforced in the database, so it holds across all instances
+- **Server-side HTML sanitisation** of article content on write, and again on render
+- Per-endpoint rate limiting, request-size and timeout limits, strict CSP and security headers
+- **Audit log** of security & admin actions, with secrets redacted from every log sink
 
 ### Admin panel (`/admin`)
 - **Overview** — stat tiles, 30-day views chart, top posts
+- **Categories** — manage the learning path: add, rename, reorder, delete (with article-impact warnings)
 - **Inbox** (contact messages: mark handled / delete), **Subscribers** (CSV export, delete, **send digest**), **Activity** (audit log)
 
 ### Contact & newsletter (backend-persisted)
 - Contact form + newsletter subscribe stored in PostgreSQL, emailed via SMTP (branded templates)
 - Honeypot + rate limiting; two-step unsubscribe; **weekly digest automation** (opt-in cron)
+
+### Discovery
+- Filter the archive by **category** (`?category=<slug>`) or **tag**; both compose with search
+- `?uncategorized=true` lists everything still to be filed
 
 ### Discovery & SEO
 - **RSS feed**, **sitemap.xml**, **robots.txt**; per-page canonical/OG/Twitter meta + JSON-LD
@@ -52,25 +62,39 @@ A full-stack blogging platform built with React + Node.js. Premium reading exper
 ```
 scriptory/
 ├── backend/                  # Express API
+│   ├── Dockerfile            # multi-stage, non-root, dumb-init for signal handling
 │   ├── prisma/               # schema.prisma, migrations, seed.js
+│   ├── tests/                # security.test.js — access control, CSRF, throttling
 │   └── src/
-│       ├── config/           # db, cloudinary, mailer, env
-│       ├── middleware/       # auth (cookie), admin, error, optionalAuth
+│       ├── config/
+│       │   ├── platform.js   # host abstraction (proxy hops, instance cap, region)
+│       │   ├── database.js   # pooling + socket/TCP transport
+│       │   ├── secrets.js    # env or *_FILE mounted secrets
+│       │   └── db, cloudinary, mailer, env
+│       ├── middleware/       # auth, admin, optionalAuth, csrf, rateLimit,
+│       │                     # security (helmet/CORS), validate, requestContext, error
 │       ├── modules/
 │       │   ├── auth/  user/  article/  comment/  like/  view/  tag/  upload/
 │       │   ├── bookmark/     # save / status / list
 │       │   ├── contact/  newsletter/   # submit/subscribe + admin manage + digest
 │       │   ├── analytics/  stats/       # admin overview + public totals
 │       │   ├── audit/  feed/  og/       # audit log, rss/sitemap/robots, OG images
-│       ├── utils/            # audit, emailTemplate, embedding, logger, response, …
-│       ├── scheduler.js      # node-cron: draft auto-publish + weekly digest
-│       └── server.js
+│       │   ├── health/       # /healthz (liveness), /readyz (readiness)
+│       │   └── internal/     # /internal/tasks/* for an external scheduler
+│       ├── utils/            # audit, sanitizeHtml, loginThrottle, memoCache,
+│       │                     # emailTemplate, embedding, logger, response, …
+│       ├── scheduler.js      # in-process cron (single-instance deployments only)
+│       └── server.js         # graceful shutdown, timeouts, connect retry
+├── deploy/
+│   ├── README.md             # deployment guide, rate-limit + pool rationale
+│   └── gcp/                  # Cloud Run adapter: service.yaml, cloudbuild.yaml,
+│                             # scheduler-jobs.sh
 └── frontend/                 # React app
     ├── public/
     └── src/
         ├── components/       # layout, ui (SmartImage, Reveal, …), CommandPalette, SecuritySettings
         ├── context/          # AuthContext (cookie), ThemeContext
-        ├── lib/              # api.ts, cache.ts (SWR), highlighter.ts, mermaid.ts (lazy)
+        ├── lib/              # api.ts, cache.ts (SWR), sanitize.ts, highlighter.ts, mermaid.ts
         ├── pages/            # Home, Articles, ArticleDetail, WriteArticle, Profile,
         │                     # Login, Admin, Author, About, Contact, NotFound
         └── utils/
@@ -87,12 +111,16 @@ scriptory/
 ### Backend
 ```bash
 cd backend
-cp .env.example .env   # fill in your values
+cp .env.example .env   # fill in your values — JWT_SECRET needs 32+ chars in production
 npm install
 npx prisma migrate dev
 npm run seed           # creates admin (only if ADMIN_EMAIL/ADMIN_PASSWORD set)
 npm run dev            # runs on :5000
+npm test               # security suite: access control, CSRF, throttling, headers
 ```
+
+`npm test` runs against a real database, so point `DATABASE_URL` at a scratch one.
+It cleans up only the rows it creates.
 
 ### Frontend
 ```bash
@@ -100,6 +128,7 @@ cd frontend
 cp .env.example .env   # VITE_API_URL=http://localhost:5000/api
 npm install
 npm run dev            # runs on :3000
+npm run lint           # tsc --noEmit
 ```
 
 ### Key backend `.env` variables
@@ -165,11 +194,46 @@ See `backend/README.md` for the full reference.
 
 ## Deployment
 
-**Backend** — any Node.js host (Railway, Render, Fly.io). Run `npx prisma migrate deploy` on each deploy (migrations do **not** run on server start). Set `API_URL` to the public backend URL; use HTTPS in production (secure cookies). `sharp` needs a compatible host. The scheduler runs in-process — run a **single** instance (or one dedicated worker) to avoid duplicate digest sends.
+The API ships as a plain OCI container (`backend/Dockerfile`) with no vendor SDK
+and no vendor-specific code path. Host-specific details arrive as environment
+variables and are normalised by `src/config/platform.js`, so moving between
+providers means writing a manifest — not touching `src/`.
 
-**Frontend** — Vercel or Netlify. Set `VITE_API_URL` to your deployed backend URL. The included `vercel.json` handles SPA routing.
+**[`deploy/README.md`](deploy/README.md)** is the full guide: provisioning,
+secrets, the rate-limit and connection-pool rationale, and operational notes.
+`deploy/gcp/` is a worked Cloud Run + Cloud SQL adapter.
 
-> If the frontend and API are on **different sites** in production, set `COOKIE_SAMESITE=none` (HTTPS required) so the session cookie is sent cross-site.
+```bash
+# Backend (any container host)
+docker build -t scriptory-api backend/
+
+# Frontend (any static host)
+cd frontend && VITE_API_URL="https://api.example.com/api" npm run build
+```
+
+A few things that matter wherever you deploy:
+
+- **Migrations run as a deploy step**, never at container startup — otherwise
+  every instance in a scale-out races to migrate the same database.
+- **`MAX_INSTANCES` is a security setting.** Rate limits are in-process, so the
+  effective global ceiling is roughly the configured limit times this number.
+  Keep it equal to the platform's max-instances. Credential brute force is the
+  exception: that lockout lives in the database and is genuinely global.
+- **`TRUST_PROXY_HOPS` must match reality** (1 behind Cloud Run, 2 with a load
+  balancer in front). Too high lets clients forge `X-Forwarded-For` and evade
+  every limit; too low keys the whole world on one bucket.
+- **Set `SCHEDULER_MODE=external`** on any autoscaled deployment and drive
+  `/internal/tasks/*` from a platform scheduler. In-process cron either never
+  fires (scaled to zero) or fires once per instance — which for the newsletter
+  digest means one duplicate email per instance, per subscriber.
+- **`DB_POOL_MAX × MAX_INSTANCES` must stay under the database's
+  `max_connections`.** Exceeding it fails every instance at once.
+- If the frontend and API are on **different sites**, set `COOKIE_SAMESITE=none`
+  (HTTPS required). That removes the browser's implicit CSRF protection; the
+  Origin check in `csrf.middleware.js` is what replaces it.
+
+`sharp` needs a compatible host; the provided Alpine image resolves the musl
+build automatically.
 
 ## License
 
