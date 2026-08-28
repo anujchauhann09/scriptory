@@ -19,11 +19,44 @@ let shuttingDown = false;
 const start = async () => {
   try {
     await prisma.connectWithRetry();
+
+    const budget = prisma.poolInfo.describeBudget();
     logger.info("Database connected", {
-      poolMax: prisma.poolInfo.poolMax,
-      connectionBudget: prisma.poolInfo.connectionBudget,
+      ...budget,
       transport: prisma.poolInfo.usesSocket ? "unix-socket" : "tcp",
     });
+
+    /**
+     * Surfaced at error level rather than thrown.
+     *
+     * A pool that overruns the tier still works at low traffic; it fails only
+     * when the service scales out or redeploys — so refusing to boot would turn
+     * a latent capacity problem into an immediate total outage, and would also
+     * block the deploy that fixes it. Loud in the logs is the right severity:
+     * it reaches alerting without taking the site down.
+     */
+    /**
+     * Repeated on every single startup, at error level, for as long as the
+     * bootstrap flag is set. This is what makes the escape hatch self-limiting:
+     * it is loud enough to be unpleasant to leave in place, and it names the
+     * exact remedy.
+     */
+    if (config.apiUrlPending) {
+      logger.error(
+        "API_URL_PENDING is set — this revision has no public API URL and newsletter " +
+          "emails are disabled. Read the generated service URL, set API_URL to it, " +
+          "remove API_URL_PENDING, and redeploy.",
+        { degraded: ["newsletter-emails"] }
+      );
+    }
+
+    if (!budget.fits) {
+      logger.error(
+        "Database pool can exceed the instance connection limit during a rolling deploy. " +
+          "Lower DB_POOL_MAX or MAX_INSTANCES, or raise the database tier.",
+        budget
+      );
+    }
 
     // 0.0.0.0, not localhost: a container's health check and load balancer
     // arrive on the container's own network interface, and a process bound to

@@ -11,7 +11,26 @@ const escapeHtml = (str = "") =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
   );
 
+/**
+ * Whether an email carrying an unsubscribe link may be sent at all.
+ *
+ * Only false during first-deploy bootstrap, when the platform has not yet
+ * minted the service URL. Refusing is the correct behaviour rather than an
+ * inconvenience: an unsubscribe link is not decoration, and a bulk email that
+ * carries a broken one is worse than no email — it cannot be opted out of, and
+ * in most jurisdictions that is the part that is actually required.
+ */
+const canBuildUnsubscribeLinks = () => Boolean(config.apiUrl);
+
 const sendWelcome = (subscriber) => {
+  if (!canBuildUnsubscribeLinks()) {
+    // The subscriber is still recorded; only the email is withheld, so nothing
+    // is lost and the welcome can be re-sent once API_URL is set.
+    logger.warn("Welcome email withheld: API_URL is not set yet", {
+      reason: "api-url-pending",
+    });
+    return;
+  }
   const unsubscribeUrl = `${config.apiUrl}/api/newsletter/unsubscribe?token=${subscriber.unsubscribeToken}`;
   const articlesUrl = `${config.frontendUrl}/articles`;
   sendMail({
@@ -114,6 +133,18 @@ const deleteSubscriber = async (uuid) => {
 // Broadcast recent posts to every active subscriber. Called by the weekly cron
 // and by the admin "Send digest" action.
 const sendDigest = async ({ sinceDays = 7, max = 8 } = {}) => {
+  if (!canBuildUnsubscribeLinks()) {
+    logger.error("Digest refused: API_URL is not set, so no unsubscribe link can be built", {
+      reason: "api-url-pending",
+    });
+    return {
+      sent: 0,
+      total: 0,
+      skipped: true,
+      message: "Digest not sent: API_URL is not configured, so unsubscribe links cannot be built.",
+    };
+  }
+
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
   const articles = await prisma.article.findMany({
     where: { published: true, createdAt: { gte: since } },

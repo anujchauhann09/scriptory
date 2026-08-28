@@ -52,9 +52,13 @@ create_job scriptory-publish-scheduled "*/5 * * * *" "/internal/tasks/publish-sc
 # window. Off-peak, since it deletes rows.
 create_job scriptory-maintenance "17 3 * * *" "/internal/tasks/maintenance" "300s"
 
-# The weekly digest. NOT idempotent: it mails every subscriber, so exactly one
-# trigger must own it. The handler batches with a deadline and reports how far
-# it got, so a large list degrades to "incomplete" rather than being cut off.
+# The weekly digest. This is the one job where the scheduler's at-least-once
+# behaviour matters: it retries on a deadline it did not hear back from, which
+# includes the case where the send actually completed. The handler is protected
+# by a database lease keyed on the ISO week, so a retry inside the same week is
+# skipped and answers 200 — the scheduler stops, and no subscriber is mailed
+# twice. The send itself batches with an internal deadline, so a large list
+# degrades to "incomplete" rather than being cut off mid-flight.
 create_job scriptory-newsletter-digest "0 9 * * 1" "/internal/tasks/newsletter-digest" "540s"
 
 echo "Scheduler jobs created or updated."

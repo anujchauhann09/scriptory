@@ -1,0 +1,21 @@
+-- ---------------------------------------------------------------------------
+-- Reset the ephemeral throttle counters after changing their time convention.
+--
+-- `LoginThrottle.windowStart` used to be written with Postgres `now()`, a
+-- timestamptz being stored into a `timestamp without time zone` column. That
+-- conversion goes through the session time zone, so the stored value was
+-- session-local rather than UTC. The code now writes and compares
+-- `now() AT TIME ZONE 'UTC'` instead, matching what Prisma writes.
+--
+-- Rows written under the old convention would be misread under the new one — on
+-- a session zone ahead of UTC they look like they are in the future, so their
+-- window never expires and the account stays throttled longer than intended.
+--
+-- These rows are short-lived rate-limit counters with no business value, so the
+-- correct fix is simply to drop them. The worst case is that an attack in
+-- progress at deploy time gets its guess budget reset once; the in-process
+-- limiter still applies, and the window is only fifteen minutes.
+--
+-- TaskLease is new and empty, so it needs no equivalent treatment.
+-- ---------------------------------------------------------------------------
+DELETE FROM "LoginThrottle";

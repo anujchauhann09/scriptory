@@ -12,6 +12,12 @@
 # scale-to-zero platform.
 FROM node:22-alpine AS build
 
+# Prisma reads the OpenSSL version to choose its query engine, and reads it by
+# running the `openssl` CLI — which Alpine does not install by default even
+# though the library is present. Without this, generation silently falls back to
+# the openssl-1.1.x engine and the runtime container cannot load it.
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 # Copy manifests first so the dependency layer is cached and only reinstalled
@@ -41,11 +47,14 @@ RUN npm prune --omit=dev \
 # --- runtime stage ---------------------------------------------------------
 FROM node:22-alpine AS runtime
 
-# dumb-init reaps zombies and, more importantly, forwards SIGTERM to the Node
-# process. Without a real init, a container's stop signal is delivered to PID 1
-# and the graceful-shutdown handler in server.js never runs — every deploy then
-# severs in-flight requests.
-RUN apk add --no-cache dumb-init
+# Without a real init, a container's stop signal is delivered to PID 1 and the
+# graceful-shutdown handler in server.js never runs — every deploy then severs
+# in-flight requests.
+# dumb-init: reaps zombies and, more importantly, forwards SIGTERM to Node.
+# openssl: the Prisma query engine links against libssl. node:22-alpine already
+# ships libssl3, but naming it here means a future base image that drops it
+# fails at build time rather than at the first database query in production.
+RUN apk add --no-cache dumb-init openssl
 
 ENV NODE_ENV=production
 # Caps V8's heap below the container's memory limit so an allocation spike

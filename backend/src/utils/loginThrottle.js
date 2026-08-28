@@ -39,6 +39,24 @@ const MAX_ACCOUNT_FAILURES = Number(process.env.LOGIN_THROTTLE_MAX_ACCOUNT) || 8
  */
 const MAX_IP_FAILURES = Number(process.env.LOGIN_THROTTLE_MAX_IP) || 30;
 
+/**
+ * Time base for every raw-SQL comparison in this file.
+ *
+ * Prisma maps `DateTime` to `timestamp without time zone` and writes UTC into
+ * it. Postgres's `now()` is a `timestamptz`, so writing or comparing it against
+ * that column silently converts through the *session* time zone — UTC on Cloud
+ * SQL, but Asia/Kolkata on a developer's machine, and the two disagree by hours.
+ *
+ * As long as a column is only ever written and read by `now()` the skew cancels
+ * out, which is why this was invisible. It stops cancelling the moment Prisma
+ * writes the same column, and then a lease looks expired when it is not.
+ *
+ * `now() AT TIME ZONE 'UTC'` yields a naive timestamp already in UTC, which is
+ * exactly the convention Prisma uses — so SQL-written and Prisma-written values
+ * are interchangeable regardless of where the code runs.
+ */
+const NOW_UTC = Prisma.sql`(now() AT TIME ZONE 'UTC')`;
+
 const accountKey = (email) => `email:${String(email || "").trim().toLowerCase()}`;
 const ipKey = (ip) => `ip:${ip}`;
 
@@ -52,15 +70,15 @@ const ipKey = (ip) => `ip:${ip}`;
 const recordFailure = async (key) => {
   const rows = await prisma.$queryRaw(Prisma.sql`
     INSERT INTO "LoginThrottle" ("key", "failures", "windowStart", "updatedAt")
-    VALUES (${key}, 1, now(), now())
+    VALUES (${key}, 1, ${NOW_UTC}, ${NOW_UTC})
     ON CONFLICT ("key") DO UPDATE SET
       "failures" = CASE
-        WHEN "LoginThrottle"."windowStart" < now() - make_interval(secs => ${WINDOW_SECONDS}::double precision)
+        WHEN "LoginThrottle"."windowStart" < ${NOW_UTC} - make_interval(secs => ${WINDOW_SECONDS}::double precision)
         THEN 1 ELSE "LoginThrottle"."failures" + 1 END,
       "windowStart" = CASE
-        WHEN "LoginThrottle"."windowStart" < now() - make_interval(secs => ${WINDOW_SECONDS}::double precision)
-        THEN now() ELSE "LoginThrottle"."windowStart" END,
-      "updatedAt" = now()
+        WHEN "LoginThrottle"."windowStart" < ${NOW_UTC} - make_interval(secs => ${WINDOW_SECONDS}::double precision)
+        THEN ${NOW_UTC} ELSE "LoginThrottle"."windowStart" END,
+      "updatedAt" = ${NOW_UTC}
     RETURNING "failures", "windowStart"
   `);
   return rows[0] || { failures: 1, windowStart: new Date() };

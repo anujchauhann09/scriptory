@@ -41,6 +41,9 @@ const normalise = (value) => {
  *  (the newsletter unsubscribe confirmation is a real form served from here). */
 const buildAllowlist = () => {
   const origins = new Set(config.allowedOrigins.map((o) => normalise(o)).filter(Boolean));
+  // Absent during first-deploy bootstrap. Nothing is lost by omitting it: the
+  // only page served from this origin is the unsubscribe form, and the emails
+  // that link to it are withheld for the same reason.
   const self = normalise(config.apiUrl);
   if (self) origins.add(self);
   return origins;

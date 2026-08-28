@@ -86,13 +86,37 @@ test("the taxonomy is public and ordered as a learning path", async () => {
   assert.equal(res.status, 200);
 
   const slugs = res.body.data.map((c) => c.slug);
+
+  /**
+   * The six defaults must exist and keep their relative order — but this
+   * deliberately does NOT assert the full list.
+   *
+   * Admins can add, rename and remove categories, so pinning the exact set
+   * would mean this test fails the moment the feature is used as intended. It
+   * checks the invariant (the seeded path is intact and in sequence), not a
+   * snapshot of one database's contents.
+   */
+  const defaults = [
+    "backend-engineering",
+    "system-design",
+    "dsa-cs",
+    "cloud",
+    "devops",
+    "ai-ml-engineering",
+  ];
+  const positions = defaults.map((slug) => {
+    const index = slugs.indexOf(slug);
+    assert.notEqual(index, -1, `the seeded category "${slug}" is missing`);
+    return index;
+  });
   assert.deepEqual(
-    slugs,
-    ["backend-engineering", "system-design", "dsa-cs", "cloud", "devops", "ai-ml-engineering"],
-    "categories are not in the intended learning order"
+    positions,
+    [...positions].sort((a, b) => a - b),
+    "the seeded categories are no longer in the intended learning order"
   );
 
-  // sortOrder must be strictly ascending, since it is what every surface sorts by.
+  // sortOrder must be ascending across the whole list, since it is what every
+  // surface sorts by.
   const orders = res.body.data.map((c) => c.sortOrder);
   assert.deepEqual(orders, [...orders].sort((a, b) => a - b));
 

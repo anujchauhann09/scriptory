@@ -16,21 +16,35 @@ spec:
   template:
     metadata:
       annotations:
-        # Instance ceiling. This is a security control, not just a cost one:
-        # in-process rate limits are per instance, so the effective global
-        # ceiling is roughly the configured limit times this number. It also
-        # bounds database connections at DB_POOL_MAX x this value.
-        autoscaling.knative.dev/maxScale: "4"
+        # Instance ceiling. Two things depend on this number, so it is not a
+        # free dial:
+        #   - in-process rate limits are per instance, so the effective global
+        #     ceiling is roughly the configured limit times this value;
+        #   - database connections are DB_POOL_MAX x this value, and roughly
+        #     DOUBLE that mid-deploy while two revisions overlap.
+        # At 2 x DB_POOL_MAX 3 that is 6 steady / 12 peak, which fits a
+        # db-f1-micro (25 connections, 3 reserved) with room to spare.
+        # Two instances at concurrency 80 is ~160 concurrent requests.
+        autoscaling.knative.dev/maxScale: "2"
         # Scale to zero. Nothing in the app holds state between requests, so an
         # idle period costs nothing. The trade-off is a cold start on the next
         # request and no in-process cron — which is why background work is
         # driven by Cloud Scheduler (see scheduler-jobs.yaml).
         autoscaling.knative.dev/minScale: "0"
-        # Attaches the Cloud SQL instance and mounts its socket at
-        # /cloudsql/<connection-name>. Set DB_SOCKET_PATH to match.
-        run.googleapis.com/cloudsql-instances: PROJECT_ID:REGION:INSTANCE_NAME
-        # Only egress to private ranges goes through the VPC connector; public
-        # egress (SMTP, Cloudinary, Gemini) stays direct.
+        # Direct VPC egress: the revision gets an address on the subnet and
+        # reaches Cloud SQL over its private IP.
+        #
+        # NOT the `cloudsql-instances` socket integration. That mounts a Cloud
+        # SQL Auth Proxy socket which resolves the instance over its *public*
+        # endpoint, so on a private-IP-only instance it has nothing to connect
+        # to. Direct VPC egress is also free — no Serverless VPC Access
+        # connector to run and pay for.
+        run.googleapis.com/network-interfaces: '[{"network":"default","subnetwork":"default"}]'
+        # Only RFC1918 traffic is routed through the VPC. `all-traffic` would
+        # send outbound internet through it too, which then needs a Cloud NAT —
+        # a paid resource this deployment has no other reason to run. Cloudinary,
+        # SMTP and Gemini keep egressing directly.
+        run.googleapis.com/vpc-access-egress: private-ranges-only
         run.googleapis.com/execution-environment: gen2
     spec:
       # Requests served concurrently per instance. Node is single-threaded and
@@ -41,9 +55,13 @@ spec:
       # Must exceed the app's own REQUEST_TIMEOUT_MS so the app produces the
       # error rather than the platform cutting the connection.
       timeoutSeconds: 60
-      serviceAccountName: scriptory-api@PROJECT_ID.iam.gserviceaccount.com
+      # Least privilege: reading secrets is all this identity needs. Connecting
+      # to a private IP over TCP is plain networking, so roles/cloudsql.client —
+      # which exists to authorise the Cloud SQL Auth Proxy against the Admin
+      # API — is not required and is deliberately not granted.
+      serviceAccountName: scriptory-api@scriptory-506807.iam.gserviceaccount.com
       containers:
-        - image: REGION-docker.pkg.dev/PROJECT_ID/scriptory/api:latest
+        - image: asia-south1-docker.pkg.dev/scriptory-506807/scriptory/api:latest
           ports:
             # Cloud Run injects PORT; the app reads it rather than assuming.
             - name: http1
@@ -60,29 +78,59 @@ spec:
             # Normalised by src/config/platform.js. Kept in sync with maxScale
             # above, because the rate limiters are budgeted against it.
             - name: MAX_INSTANCES
-              value: "4"
+              value: "2"
             # Cloud Run appends exactly one hop to X-Forwarded-For. Raise to 2
             # if a global external load balancer is placed in front, or every
             # rate limit will key on the load balancer's address.
             - name: TRUST_PROXY_HOPS
               value: "1"
             - name: FRONTEND_URL
-              value: https://scriptory.example.com
+              value: https://scriptory.vercel.app
+            # Cloud Run mints the service URL only after the service exists, so
+            # the first revision cannot know its own address.
+            #
+            # A placeholder is NOT the answer: with one set, the service boots
+            # believing it has a public URL and sends real welcome emails whose
+            # unsubscribe links point at a domain that does not resolve. The
+            # recipient then cannot opt out, which is the part that is actually
+            # required of a bulk sender.
+            #
+            # Bootstrap instead: on the first deploy comment out API_URL and
+            # uncomment API_URL_PENDING. The service boots, newsletter emails are
+            # withheld rather than sent broken, and startup logs an error every
+            # time until it is fixed. Then read the generated URL:
+            #
+            #   gcloud run services describe scriptory-api --region=asia-south1 \
+            #     --format='value(status.url)'
+            #
+            # ...set it below, drop the flag, and redeploy. See "First
+            # deployment" in deploy/README.md.
             - name: API_URL
-              value: https://api.scriptory.example.com
+              value: https://scriptory-api-5ul5micqoa-el.a.run.app
+            # - name: API_URL_PENDING
+            #   value: "true"
             # The SPA and API are on different sites here, so the session cookie
             # must be SameSite=None to be sent at all. That removes the browser's
             # implicit CSRF protection; the Origin check in csrf.middleware.js
             # is what replaces it.
             - name: COOKIE_SAMESITE
               value: none
-            # Unix socket mounted by the cloudsql-instances annotation above.
-            - name: DB_SOCKET_PATH
-              value: /cloudsql/PROJECT_ID:REGION:INSTANCE_NAME
-            # 5 x 4 instances = 20 connections, well inside a db-g1-small's
-            # limit with headroom for migrations and admin sessions.
+            # No DB_SOCKET_PATH: the connection is plain TCP to the instance's
+            # private IP, carried in the DATABASE_URL secret. config/database.js
+            # adds `sslmode=require` for TCP connections in production, which is
+            # what the instance's SSL-only setting demands.
+            # 3 is Prisma's own default for a single vCPU. With MAX_INSTANCES 2
+            # that is 6 steady and 12 during a rolling deploy, against a
+            # db-f1-micro's 25 (3 of them reserved for the superuser) — leaving
+            # ~10 free for migrations, psql and Cloud SQL's own tooling.
+            # Requests queue in-process on the pool, which is far cheaper than
+            # opening more sockets to a shared-core database.
             - name: DB_POOL_MAX
-              value: "5"
+              value: "3"
+            # The tier's ceiling, so the app can check its own budget at
+            # startup and complain if these numbers stop adding up.
+            - name: DB_MAX_CONNECTIONS
+              value: "25"
             # No in-process cron: with minScale 0 there may be no instance at
             # the scheduled moment, and with several instances every one of them
             # would run the job. Cloud Scheduler calls /internal/tasks/* instead.
@@ -95,6 +143,48 @@ spec:
             # completes before SIGKILL.
             - name: SHUTDOWN_TIMEOUT_MS
               value: "9000"
+
+            - name: EMBEDDING_MODEL
+              value: "text-embedding-004"
+
+            - name: SMTP_HOST
+              value: "smtp.gmail.com"
+
+            - name: SMTP_PORT
+              value: "587"
+
+            - name: SMTP_SECURE
+              value: "false"
+
+            - name: SMTP_USER
+              value: "heyanujchauhan@gmail.com"
+
+            - name: CLOUDINARY_CLOUD_NAME
+              value: "dmdxu550w"
+
+            - name: CLOUDINARY_API_KEY
+              value: "686252262321866"
+
+            - name: MAIL_FROM
+              value: "Scriptory <heyanujchauhan@gmail.com>"
+
+            - name: CONTACT_RECIPIENT
+              value: "heyanujchauhan@gmail.com"
+
+            - name: JWT_EXPIRES_IN
+              value: "1d"
+
+            - name: TWO_FACTOR_ISSUER
+              value: "Scriptory"
+
+            - name: NEWSLETTER_DIGEST_ENABLED
+              value: "false"
+
+            - name: NEWSLETTER_DIGEST_CRON
+              value: "0 9 * * 1"
+
+            - name: ADMIN_EMAIL
+              value: "admin@scriptory.com"
 
             # --- secrets --------------------------------------------------
             # Mounted from Secret Manager, never baked into the image or set as
@@ -118,6 +208,23 @@ spec:
             - name: GEMINI_API_KEY
               valueFrom:
                 secretKeyRef: { name: scriptory-gemini-key, key: latest }
+            # ADMIN_PASSWORD is deliberately NOT injected here.
+            #
+            # Only src/prisma/seed.js reads it; the running API loads it into
+            # config and never uses it. Mounting it into the service would put
+            # the admin credential in the environment of every request-serving
+            # container for no benefit — and a revision fails to start if a
+            # referenced secret is missing, so it is also one more thing that can
+            # break the deploy.
+            #
+            # Seed from a one-off Cloud Run Job on the same image instead, where
+            # the secret is scoped to that execution:
+            #   gcloud run jobs deploy scriptory-seed --image=<same image> \
+            #     --region=asia-south1 --network=default --subnet=default \
+            #     --vpc-egress=private-ranges-only \
+            #     --set-secrets=DATABASE_URL=scriptory-database-url:latest,ADMIN_PASSWORD=scriptory-admin-password:latest \
+            #     --set-env-vars=ADMIN_EMAIL=admin@scriptory.com,NODE_ENV=production \
+            #     --command=npm --args=run,seed --execute-now --wait
 
           # Liveness deliberately does NOT touch the database: a database blip
           # would otherwise make every instance look dead, and Cloud Run would

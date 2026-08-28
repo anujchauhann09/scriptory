@@ -32,9 +32,14 @@ const intFromEnv = (key, fallback) => {
  * than a small multiple of its CPU count, so a big pool buys nothing but
  * connection-slot consumption. A small pool with a short queue timeout is
  * strictly better under autoscaling — requests queue in-process (cheap) rather
- * than the platform opening more sockets to the database (expensive, capped).
+ * than the platform opening more sockets to the database (expensive, and hard
+ * capped by the instance tier).
+ *
+ * Three on a serverless platform is Prisma's own default for a single vCPU
+ * (`num_cpus * 2 + 1`), and it is what makes the budget below fit a shared-core
+ * database with room to spare.
  */
-const poolMax = intFromEnv("DB_POOL_MAX", platform.isServerless ? 5 : 10);
+const poolMax = intFromEnv("DB_POOL_MAX", platform.isServerless ? 3 : 10);
 
 /** Seconds a query waits for a free connection before failing fast. */
 const poolTimeout = intFromEnv("DB_POOL_TIMEOUT", 10);
@@ -93,11 +98,60 @@ const buildConnectionUrl = () => {
 };
 
 /**
- * Total connection slots this deployment can consume at full scale-out.
- * Compare against the database tier's max_connections and leave headroom for
- * migrations, admin sessions, and the platform's own health checks.
+ * The database tier's connection ceiling.
+ *
+ * Defaults to 25, which is what Cloud SQL gives a shared-core instance
+ * (db-f1-micro / db-g1-small). Guessing low is the safe direction: the failure
+ * mode for exceeding it is not slow queries, it is every instance failing to
+ * connect at once.
  */
+const maxConnections = intFromEnv("DB_MAX_CONNECTIONS", 25);
+
+/**
+ * Connections the managed service keeps for itself. Cloud SQL reserves three
+ * for the superuser; these are not available to the application.
+ */
+const reservedConnections = intFromEnv("DB_RESERVED_CONNECTIONS", 3);
+
+/**
+ * Peak instance count, not steady-state.
+ *
+ * During a rolling deploy the old revision is still serving while the new one
+ * starts, so both revisions hold pools simultaneously. Budgeting against
+ * `maxInstances` alone under-counts by roughly half at exactly the moment the
+ * system is least able to absorb a failure — a bad deploy that cannot open a
+ * connection looks identical to a bad deploy that crashed.
+ */
+const deployOverlapFactor = intFromEnv("DB_DEPLOY_OVERLAP_FACTOR", 2);
+
+/** Steady-state usage: every instance holding a full pool. */
 const connectionBudget = poolMax * platform.maxInstances;
+
+/** Worst case, mid-deploy, with both revisions up. */
+const peakConnectionBudget = connectionBudget * deployOverlapFactor;
+
+/** What is left for migrations, `psql`, and Cloud SQL's own tooling. */
+const headroom = maxConnections - reservedConnections - peakConnectionBudget;
+
+/**
+ * Whether this configuration can survive its own deployment.
+ *
+ * Deliberately reported rather than thrown: an operator on a larger tier sets
+ * DB_MAX_CONNECTIONS and this goes quiet, while a misconfiguration on a small
+ * tier is loud at startup instead of at 3am under load.
+ */
+const budgetFitsTier = headroom >= 0;
+
+const describeBudget = () => ({
+  poolMax,
+  maxInstances: platform.maxInstances,
+  steadyState: connectionBudget,
+  peakDuringDeploy: peakConnectionBudget,
+  tierMaxConnections: maxConnections,
+  reserved: reservedConnections,
+  headroom,
+  fits: budgetFitsTier,
+});
 
 module.exports = {
   buildConnectionUrl,
@@ -106,5 +160,10 @@ module.exports = {
   connectTimeout,
   statementTimeoutMs,
   connectionBudget,
+  peakConnectionBudget,
+  maxConnections,
+  headroom,
+  budgetFitsTier,
+  describeBudget,
   usesSocket: Boolean(process.env.DB_SOCKET_PATH),
 };

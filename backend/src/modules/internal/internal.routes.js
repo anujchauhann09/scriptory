@@ -56,6 +56,20 @@ const run = (name, fn) => async (req, res, next) => {
   try {
     const started = Date.now();
     const result = await fn();
+
+    /**
+     * A skipped run answers 200, not an error.
+     *
+     * The scheduler retries anything that is not a success, so reporting "I
+     * skipped this because it was already done" as a failure would produce
+     * exactly the retry storm the lease exists to prevent. From the scheduler's
+     * point of view the work it asked for has happened, which is the truth.
+     */
+    if (result && result.skipped) {
+      logger.info("Scheduled task skipped", { task: name, ...result });
+      return sendSuccess(res, 200, `Task "${name}" skipped: already run`, result);
+    }
+
     logger.info("Scheduled task completed", { task: name, durationMs: Date.now() - started, ...result });
     return sendSuccess(res, 200, `Task "${name}" completed`, result);
   } catch (err) {

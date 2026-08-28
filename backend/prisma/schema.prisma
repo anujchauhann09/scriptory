@@ -1,5 +1,18 @@
 generator client {
   provider = "prisma-client-js"
+
+  /// Engines to fetch, stated explicitly rather than left to detection.
+  ///
+  /// Prisma picks its query engine by sniffing the OpenSSL version at generate
+  /// time. Inside the Alpine build image that sniff fails — the image ships the
+  /// libssl.so.3 *library* but not the `openssl` CLI Prisma looks for — so it
+  /// silently falls back to the openssl-1.1.x engine and the container then dies
+  /// at first query with "Error loading shared library libssl.so.1.1".
+  ///
+  /// "native" covers whatever machine runs this locally; the musl target is the
+  /// container. Naming both makes the build deterministic instead of dependent
+  /// on what the base image happens to have installed.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -64,6 +77,34 @@ model AuditLog {
 /// case where that is unacceptable, so the counter lives in the database every
 /// instance already shares — no Redis, no external rate-limit service.
 /// Rows are short-lived and pruned by the maintenance task.
+/// Mutual exclusion and replay protection for scheduled tasks.
+///
+/// Needed because an external scheduler is an at-least-once trigger, not
+/// exactly-once. Cloud Scheduler retries on any non-2xx response and on a
+/// deadline it did not hear back from — including the case where the work
+/// actually completed but the response was lost. For an idempotent task that is
+/// harmless; for the newsletter digest it means every subscriber receives a
+/// second copy.
+///
+/// Two guarantees, both settled in a single atomic statement:
+///   - `lockedUntil` stops two runs overlapping (the cron firing while an admin
+///     presses "Send digest"). It is a lease, not a lock, so a runner that
+///     crashes mid-task cannot block the job forever.
+///   - `lastRunKey` stops the same logical run happening twice. A retry that
+///     carries the key of a run that already finished is skipped.
+///
+/// Uses the Postgres instance the app already depends on — no Redis, no
+/// external coordination service.
+model TaskLease {
+  task        String    @id
+  /// Held while a run is in flight; null or past means the task is free.
+  lockedUntil DateTime?
+  /// Identifies the logical occurrence, e.g. "2026-W35" for a weekly digest.
+  lastRunKey  String?
+  lastRunAt   DateTime?
+  updatedAt   DateTime  @updatedAt
+}
+
 model LoginThrottle {
   key         String   @id // "email:<address>" or "ip:<client key>"
   failures    Int      @default(0)

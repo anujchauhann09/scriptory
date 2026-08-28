@@ -71,5 +71,6 @@ module.exports.poolInfo = {
   poolMax: database.poolMax,
   poolTimeout: database.poolTimeout,
   connectionBudget: database.connectionBudget,
+  describeBudget: database.describeBudget,
   usesSocket: database.usesSocket,
 };

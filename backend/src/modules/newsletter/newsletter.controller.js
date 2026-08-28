@@ -1,4 +1,5 @@
 const newsletterService = require("./newsletter.service");
+const tasks = require("../internal/internal.tasks");
 const { sendSuccess } = require("../../utils/response");
 
 const MESSAGES = {
@@ -132,9 +133,29 @@ const list = async (req, res, next) => {
   }
 };
 
+/**
+ * Admin "Send digest".
+ *
+ * Routed through the same lease as the scheduled run, so a manual send can
+ * never overlap the cron and double-mail every subscriber.
+ *
+ * It passes no run key on purpose: the admin is explicitly asking to send now,
+ * and that intent should not be silently swallowed by a key saying "this week
+ * already went out". Mutual exclusion still applies; only the replay check is
+ * skipped.
+ */
 const digest = async (req, res, next) => {
   try {
-    const result = await newsletterService.sendDigest();
+    const result = await tasks.sendNewsletterDigest({ runKey: null });
+
+    if (result.skipped) {
+      return sendSuccess(
+        res,
+        200,
+        "A digest send is already in progress. Nothing was sent twice.",
+        result
+      );
+    }
     return sendSuccess(res, 200, result.message, result);
   } catch (err) {
     next(err);

@@ -4,6 +4,7 @@ const loginThrottle = require("../../utils/loginThrottle");
 const { pruneAudit } = require("../../utils/audit");
 const newsletterService = require("../newsletter/newsletter.service");
 const { invalidatePublicCaches } = require("../article/article.service");
+const { withLease, isoWeekKey, dayKey } = require("../../utils/taskLease");
 
 /**
  * The background jobs, defined independently of how they are triggered.
@@ -15,9 +16,11 @@ const { invalidatePublicCaches } = require("../article/article.service");
 /**
  * Publish drafts whose scheduled time has passed.
  *
- * A single conditional updateMany, which makes it naturally idempotent: two
- * instances running it at the same moment produce the same end state, and the
- * second simply reports zero rows.
+ * Deliberately NOT leased. The whole effect is one conditional updateMany, so
+ * it is idempotent by construction: two runs at the same moment converge on the
+ * same state and the loser simply reports zero rows. This is also the most
+ * frequent task, so taking a lease on it would add a database write every
+ * minute to protect against something that cannot go wrong.
  */
 const publishScheduledDrafts = async () => {
   const result = await prisma.article.updateMany({
@@ -31,11 +34,37 @@ const publishScheduledDrafts = async () => {
   return { published: result.count };
 };
 
-/** Sends the weekly digest to every active subscriber. */
-const sendNewsletterDigest = async () => newsletterService.sendDigest();
+/**
+ * Sends the weekly digest to every active subscriber.
+ *
+ * The one task where at-least-once delivery from the scheduler is not
+ * acceptable: a retry means a second copy in every subscriber's inbox. The
+ * lease gives mutual exclusion (the cron cannot overlap an admin pressing "Send
+ * digest") and the ISO-week key gives replay protection (a retry inside the
+ * same week is skipped because that week's digest already went out).
+ *
+ * `runKey` is a parameter rather than a constant so an admin sending manually
+ * can pass none: they still cannot collide with a run in flight, but they are
+ * explicitly asking to send now, and that intent should not be swallowed by a
+ * key that says "this week is done".
+ */
+const sendNewsletterDigest = async ({ runKey = isoWeekKey() } = {}) =>
+  withLease("newsletter-digest", { runKey, ttlMs: 10 * 60 * 1000 }, () =>
+    newsletterService.sendDigest()
+  );
 
-/** Expires short-lived counters and trims data past its retention window. */
-const runMaintenance = async () => {
+/**
+ * Expires short-lived counters and trims data past its retention window.
+ *
+ * Each statement is an idempotent delete, so correctness does not depend on the
+ * lease — but these are bulk deletes over two tables, and letting a retry pile a
+ * second sweep on top of one still running is pointless load on a shared-core
+ * database. The day key also keeps a retry from re-sweeping within the same day.
+ */
+const runMaintenance = async ({ runKey = dayKey() } = {}) =>
+  withLease("maintenance", { runKey, ttlMs: 5 * 60 * 1000 }, () => maintenanceWork());
+
+const maintenanceWork = async () => {
   const [throttleRows, auditRows] = await Promise.all([
     loginThrottle.prune().catch((err) => {
       logger.error("Throttle prune failed", { message: err.message });
