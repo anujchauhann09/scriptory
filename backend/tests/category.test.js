@@ -600,3 +600,32 @@ test("category counts only include published articles", async () => {
 
   assert.equal(updated, baseline, "an unpublished article was counted publicly");
 });
+
+test("article create/read preserves canonical hybrid content source", async () => {
+  const title = unique("Hybrid Content Source");
+  const contentSource = {
+    version: 1,
+    format: "hybrid",
+    blocks: [
+      { type: "markdown", markdown: "## Intro\n\nThis stays as Markdown." },
+      { type: "image", src: "https://cdn.example.com/media/sample.gif", alt: "Animated demo", caption: "A preserved GIF caption" },
+      { type: "video", provider: "youtube", id: "dQw4w9WgXcQ", title: "Queue walkthrough" },
+    ],
+  };
+
+  const create = await createArticle({
+    title,
+    content: "<h2>Intro</h2><p>This stays as Markdown.</p>",
+    contentSource,
+    published: true,
+  });
+  assert.equal(create.status, 201, JSON.stringify(create.body));
+  assert.equal(create.body.data.contentFormat, "hybrid");
+  assert.equal(create.body.data.contentVersion, 1);
+  assert.deepEqual(create.body.data.contentSource, contentSource);
+
+  const read = await request(app).get(`/api/articles/${create.body.data.slug}`);
+  assert.equal(read.status, 200, JSON.stringify(read.body));
+  assert.equal(read.body.data.contentFormat, "hybrid");
+  assert.deepEqual(read.body.data.contentSource, contentSource);
+});

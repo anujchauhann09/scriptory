@@ -9,7 +9,7 @@ Express + Prisma REST API for the Scriptory blogging platform.
 - Cookie-based JWT auth (bcryptjs + jsonwebtoken + cookie-parser)
 - TOTP two-factor auth (otplib + qrcode)
 - Nodemailer (SMTP email — contact replies, welcome, weekly digest)
-- Cloudinary (image uploads via multer-storage-cloudinary)
+- Google Cloud Storage media uploads via `@google-cloud/storage` and ADC
 - sharp (auto-generated OG preview images)
 - node-cron (draft auto-publish + weekly digest)
 - @google/genai (content-embedding "related posts", optional)
@@ -28,7 +28,6 @@ backend/
 ├── src/
 │   ├── config/
 │   │   ├── db.js            # Prisma client singleton
-│   │   ├── cloudinary.js    # Multer + Cloudinary storage configs
 │   │   ├── mailer.js        # Nodemailer transport (no-ops if SMTP unset)
 │   │   └── env.js           # Validated env variables
 │   ├── middleware/
@@ -43,7 +42,7 @@ backend/
 │   │   ├── like/            # Toggle like, status
 │   │   ├── bookmark/        # Save / status (article-scoped) + saved list
 │   │   ├── tag/             # List tags
-│   │   ├── upload/          # Cover, inline, avatar upload to Cloudinary
+│   │   ├── upload/          # Cover, inline, avatar upload endpoints
 │   │   ├── user/            # Get me, update profile
 │   │   ├── view/            # Unique view tracking
 │   │   ├── contact/         # Submit (public) + list/handle/delete (admin)
@@ -52,6 +51,7 @@ backend/
 │   │   ├── stats/           # Public totals (homepage strip)
 │   │   ├── audit/           # Admin audit-log list
 │   │   ├── feed/            # /rss.xml, /sitemap.xml, /robots.txt (root-mounted)
+│   │   ├── storage/         # Provider-neutral media service + GCS provider
 │   │   └── og/              # /og/:slug.png branded preview images (sharp)
 │   ├── utils/
 │   │   ├── audit.js         # logAudit() + listAudit()
@@ -94,10 +94,9 @@ TWO_FACTOR_ISSUER=Scriptory
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
 
-# Cloudinary
-CLOUDINARY_CLOUD_NAME=
-CLOUDINARY_API_KEY=
-CLOUDINARY_API_SECRET=
+# Media storage
+MEDIA_STORAGE_PROVIDER=gcs
+GCS_MEDIA_BUCKET=scriptory-media-506807
 
 # SMTP (optional — if unset, emails are logged & skipped; data still persists)
 SMTP_HOST=
@@ -186,7 +185,8 @@ Sessions are carried by an **httpOnly cookie**; a `Bearer` header is also accept
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | GET/PATCH | `/api/users/me` · `me/profile` | User | Current user (incl. `twoFactorEnabled`) / update profile |
-| POST | `/api/upload/{cover,inline,avatar}` | Admin/User | Cloudinary uploads |
+| POST | `/api/upload/{cover,inline,avatar}` | Admin/User | GCS-backed image uploads |
+| GET | `/api/media/:token` | — | Stream private bucket media through the API |
 | GET | `/api/tags` | — | List all tags |
 | GET | `/api/stats` | — | Public totals (articles / views / topics) |
 | GET | `/api/analytics` | Admin | Dashboard: totals, 30-day views, top posts |
@@ -213,8 +213,9 @@ Jobs run **in-process** on the event loop (non-blocking, async I/O). Run a **sin
 User         — uuid, email, password, role (ADMIN|USER),
                tokenVersion, twoFactorEnabled, twoFactorSecret, twoFactorPending
 Profile      — userId, name, bio, avatarUrl
-Article      — uuid, title, subtitle, slug, content, coverImage, published, readingTime,
-               publishAt (scheduling), embedding (Json, related-posts), seriesId, seriesOrder
+Article      — uuid, title, subtitle, slug, content, contentSource, contentFormat,
+               contentVersion, coverImage, published, readingTime, publishAt,
+               embedding (Json, related-posts), seriesId, seriesOrder
 Series       — uuid, title, slug, description  →  has many Article
 Tag          — name (unique)   ·   TagOnArticle — articleId ↔ tagId
 Comment      — uuid, content, userId, articleId

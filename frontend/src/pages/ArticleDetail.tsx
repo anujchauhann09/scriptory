@@ -9,7 +9,8 @@ import { SmartImage } from '../components/ui/SmartImage';
 import { ArticleDetailSkeleton } from '../components/ui/Skeleton';
 import { articlesApi, commentsApi, likesApi, bookmarksApi, type ApiArticle, type ApiComment } from '../lib/api';
 import { getCache, setCache, clearCache } from '../lib/cache';
-import { sanitizeArticleHtml } from '../lib/sanitize';
+import { ArticleContentRenderer } from '../components/article/ArticleContentRenderer';
+import { isArticleContentSource } from '../lib/article-content/content';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { motion, useReducedMotion } from 'motion/react';
@@ -764,10 +765,12 @@ export const ArticleDetail = () => {
               ref={articleRef}
               style={{ fontSize: readerFontSize }}
               className={`prose prose-lg prose-slate dark:prose-invert max-w-none prose-a:text-brand prose-a:no-underline hover:prose-a:underline marker:text-brand [&_pre]:overflow-x-auto [&_table]:overflow-x-auto [&_table]:block ${readerSepia ? 'reader-sepia' : ''}`}
-              // Sanitised at the render boundary as well as on write, so a row
-              // stored before server-side sanitising existed still cannot inject.
-              dangerouslySetInnerHTML={{ __html: sanitizeArticleHtml(article.content) }}
-            />
+            >
+              <ArticleContentRenderer
+                source={isArticleContentSource(article.contentSource) ? article.contentSource : null}
+                legacyHtml={article.content}
+              />
+            </article>
 
             {article.series && <SeriesNav series={article.series} currentSlug={article.slug} />}
 

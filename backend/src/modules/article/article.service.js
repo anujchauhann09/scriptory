@@ -4,6 +4,7 @@ const { generateSlug } = require("../../utils/slugify");
 const { calculateReadingTime } = require("../../utils/readingTime");
 const { generateEmbedding, cosineSimilarity } = require("../../utils/embedding");
 const { sanitizeArticleHtml, stripAllHtml } = require("../../utils/sanitizeHtml");
+const { normaliseArticleContentSource, sourceToPlainText } = require("./contentContract");
 const { resolveCategoryId } = require("../category/category.service");
 const memo = require("../../utils/memoCache");
 const logger = require("../../utils/logger");
@@ -15,8 +16,10 @@ const notFound = () => {
 };
 
 // Fire-and-forget: compute + store a content embedding for related-posts.
-const generateEmbeddingFor = (uuid, { title, excerpt, content }) => {
-  const text = [title, excerpt, stripAllHtml(content || "")].filter(Boolean).join(". ").slice(0, 8000);
+const generateEmbeddingFor = (uuid, { title, excerpt, content, contentSource }) => {
+  const sourceText = sourceToPlainText(contentSource);
+  const bodyText = sourceText || stripAllHtml(content || "");
+  const text = [title, excerpt, bodyText].filter(Boolean).join(". ").slice(0, 8000);
   generateEmbedding(text)
     .then((vec) => {
       if (!vec) return;
@@ -56,6 +59,9 @@ const ARTICLE_LIST_SELECT = {
 const ARTICLE_DETAIL_SELECT = {
   ...ARTICLE_LIST_SELECT,
   content: true,
+  contentSource: true,
+  contentFormat: true,
+  contentVersion: true,
   publishAt: true,
   seriesOrder: true,
   series: {
@@ -295,6 +301,7 @@ const createArticle = async (authorUuid, input) => {
     title, subtitle, content, excerpt, coverImage,
     published = true, tags = [], series, seriesOrder, publishAt, category,
   } = input;
+  const safeContentSource = normaliseArticleContentSource(input.contentSource);
 
   const author = await prisma.user.findUnique({ where: { uuid: authorUuid }, select: { id: true } });
   if (!author) {
@@ -325,6 +332,9 @@ const createArticle = async (authorUuid, input) => {
           subtitle,
           slug,
           content: safeContent,
+          contentSource: safeContentSource || undefined,
+          contentFormat: safeContentSource ? "hybrid" : "legacy-html",
+          contentVersion: safeContentSource ? 1 : 0,
           excerpt,
           coverImage,
           published: scheduled ? false : published,
@@ -343,7 +353,7 @@ const createArticle = async (authorUuid, input) => {
   );
 
   invalidatePublicCaches();
-  generateEmbeddingFor(article.uuid, { title, excerpt, content: safeContent });
+  generateEmbeddingFor(article.uuid, { title, excerpt, content: safeContent, contentSource: safeContentSource });
   return formatArticle(article);
 };
 
@@ -352,6 +362,8 @@ const updateArticleByUuid = async (uuid, input) => {
     title, subtitle, content, excerpt, coverImage,
     published, tags, series, seriesOrder, publishAt, category,
   } = input;
+  const hasContentSource = Object.prototype.hasOwnProperty.call(input, "contentSource");
+  const safeContentSource = hasContentSource ? normaliseArticleContentSource(input.contentSource) : undefined;
 
   const existing = await prisma.article.findUnique({ where: { uuid }, select: { id: true } });
   if (!existing) throw notFound();
@@ -367,6 +379,11 @@ const updateArticleByUuid = async (uuid, input) => {
     // through, so the client-side sanitiser never sees it on this path.
     updateData.content = sanitizeArticleHtml(content);
     updateData.readingTime = calculateReadingTime(updateData.content);
+  }
+  if (hasContentSource) {
+    updateData.contentSource = safeContentSource;
+    updateData.contentFormat = safeContentSource ? "hybrid" : "legacy-html";
+    updateData.contentVersion = safeContentSource ? 1 : 0;
   }
   if (excerpt !== undefined) updateData.excerpt = excerpt;
   if (coverImage !== undefined) updateData.coverImage = coverImage || null;
@@ -424,11 +441,12 @@ const updateArticleByUuid = async (uuid, input) => {
   invalidatePublicCaches();
 
   // Refresh the embedding when the text content changed.
-  if (title !== undefined || excerpt !== undefined || content !== undefined) {
+  if (title !== undefined || excerpt !== undefined || content !== undefined || hasContentSource) {
     generateEmbeddingFor(uuid, {
       title: article.title,
       excerpt: article.excerpt,
       content: article.content,
+      contentSource: article.contentSource,
     });
   }
 

@@ -1,8 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
 import { articlesApi, uploadApi, categoriesApi, type ArticlePayload, type ApiArticle, type ApiCategory } from '../lib/api';
 import { clearCache } from '../lib/cache';
 import { Container } from '../components/ui/Container';
@@ -10,10 +8,17 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { ImageUpload } from '../components/ui/ImageUpload';
+import { ArticleContentRenderer } from '../components/article/ArticleContentRenderer';
+import {
+  contentSourceToEditorText,
+  contentSourceToHtml,
+  editorTextToContentSource,
+  isArticleContentSource,
+} from '../lib/article-content/content';
 import {
   Bold, Italic, Code, Link2, ImagePlus, List, ListOrdered,
   Heading2, Heading3, Quote, Minus, Eye, EyeOff, X, Plus, Loader2,
-  Info, ChevronDown, Workflow,
+  Info, ChevronDown, Workflow, Video, ExternalLink,
 } from 'lucide-react';
 
 const ToolBtn = ({
@@ -64,46 +69,36 @@ function insertAtCursor(ta: HTMLTextAreaElement, text: string) {
   return { next, cursor: s + text.length };
 }
 
-// Full CommonMark + GFM (headings, nested lists, tables, fenced code blocks,
-// blockquotes, task lists, etc.), then sanitized before it's ever rendered.
-marked.setOptions({ gfm: true, breaks: false });
 
-const CALLOUT_LABELS: Record<string, string> = {
-  note: 'Note', tip: 'Tip', warning: 'Warning', important: 'Important', caution: 'Caution',
-};
+function parseVideoInput(input: string): { provider: 'youtube' | 'vimeo'; id: string } | null {
+  try {
+    const url = new URL(input);
+    const host = url.hostname.replace(/^www\./, '');
+    if (host === 'youtu.be') {
+      const id = url.pathname.split('/').filter(Boolean)[0];
+      return id ? { provider: 'youtube', id } : null;
+    }
+    if (host.endsWith('youtube.com')) {
+      const id = url.searchParams.get('v') || url.pathname.split('/').filter(Boolean).pop();
+      return id ? { provider: 'youtube', id } : null;
+    }
+    if (host.endsWith('vimeo.com')) {
+      const id = url.pathname.split('/').filter(Boolean).find((part) => /^\d+$/.test(part));
+      return id ? { provider: 'vimeo', id } : null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
-// GitHub-style alert blocks:  > [!NOTE] / [!TIP] / [!WARNING] / [!IMPORTANT] / [!CAUTION]
-const calloutExtension = {
-  name: 'callout',
-  level: 'block' as const,
-  start(src: string) {
-    const m = src.match(/^>\s*\[!/m);
-    return m ? m.index : undefined;
-  },
-  tokenizer(this: any, src: string) {
-    const rule = /^(> *\[!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\][^\n]*\n(?:> ?[^\n]*\n?)*)/i;
-    const match = rule.exec(src);
-    if (!match) return undefined;
-    const type = match[2].toLowerCase();
-    const inner = match[1]
-      .replace(/^> *\[![^\]]+\][^\n]*\n/, '')
-      .replace(/^> ?/gm, '')
-      .trim();
-    const tokens = this.lexer.blockTokens(inner, []);
-    return { type: 'callout', raw: match[1], calloutType: type, tokens };
-  },
-  renderer(this: any, token: any) {
-    const body = this.parser.parse(token.tokens);
-    return `<div class="callout callout-${token.calloutType}"><p class="callout-title">${CALLOUT_LABELS[token.calloutType]}</p>${body}</div>`;
-  },
-};
-
-marked.use({ extensions: [calloutExtension] });
-
-function mdToHtml(md: string): string {
-  const raw = marked.parse(md, { async: false }) as string;
-  // Allow <details>/<summary> (collapsibles) + callout classes through the sanitizer.
-  return DOMPurify.sanitize(raw, { ADD_ATTR: ['target', 'rel', 'open'], ADD_TAGS: ['details', 'summary'] });
+function quoteAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 export const WriteArticle = () => {
@@ -162,7 +157,9 @@ export const WriteArticle = () => {
     setCoverImage(editArticle.coverImage || '');
     setTags(editArticle.tags);
     setPublished(editArticle.published);
-    setContent(editArticle.content);
+    setContent(isArticleContentSource(editArticle.contentSource)
+      ? contentSourceToEditorText(editArticle.contentSource)
+      : editArticle.content);
     setCategory(editArticle.category?.slug || '');
     setSeries(editArticle.series?.title || '');
     setSeriesOrder(editArticle.series?.order ? String(editArticle.series.order) : '');
@@ -201,12 +198,61 @@ export const WriteArticle = () => {
     setInlineUploading(true);
     try {
       const result = await uploadApi.inline(file);
-      applyFormat((ta) => insertAtCursor(ta, `\n![image](${result.url})\n`));
+      const alt = window.prompt('Alt text for this image')?.trim() || 'Article image';
+      const caption = window.prompt('Caption (optional)')?.trim() || '';
+      const attrs = [
+        `src="${result.url}"`,
+        `alt="${quoteAttr(alt)}"`,
+        caption ? `caption="${quoteAttr(caption)}"` : '',
+      ].filter(Boolean).join(' ');
+      applyFormat((ta) => insertAtCursor(ta, `
+
+:::image ${attrs}
+:::
+
+`));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Image upload failed');
     } finally {
       setInlineUploading(false);
     }
+  };
+
+
+  const insertVideoBlock = () => {
+    const rawUrl = window.prompt('YouTube or Vimeo URL')?.trim();
+    if (!rawUrl) return;
+    const parsed = parseVideoInput(rawUrl);
+    if (!parsed) {
+      setError('Use a valid YouTube or Vimeo URL.');
+      return;
+    }
+    const title = window.prompt('Video title (for accessibility)')?.trim() || '';
+    const caption = window.prompt('Caption (optional)')?.trim() || '';
+    const attrs = [
+      `provider="${parsed.provider}"`,
+      `id="${parsed.id}"`,
+      title ? `title="${quoteAttr(title)}"` : '',
+      caption ? `caption="${quoteAttr(caption)}"` : '',
+    ].filter(Boolean).join(' ');
+    applyFormat((ta) => insertAtCursor(ta, `\n\n:::video ${attrs}\n:::\n\n`));
+  };
+
+  const insertRichLinkBlock = () => {
+    const url = window.prompt('URL to preview')?.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) {
+      setError('Rich links must use http or https URLs.');
+      return;
+    }
+    const title = window.prompt('Link title (optional)')?.trim() || '';
+    const description = window.prompt('Description (optional)')?.trim() || '';
+    const attrs = [
+      `url="${url}"`,
+      title ? `title="${quoteAttr(title)}"` : '',
+      description ? `description="${quoteAttr(description)}"` : '',
+    ].filter(Boolean).join(' ');
+    applyFormat((ta) => insertAtCursor(ta, `\n\n:::rich-link ${attrs}\n:::\n\n`));
   };
 
   const toolbar = [
@@ -239,11 +285,14 @@ export const WriteArticle = () => {
     setSaving(true);
     setError('');
     try {
+      const contentSource = editorTextToContentSource(content);
+      const renderedContent = contentSourceToHtml(contentSource);
       const autoExcerpt = content.replace(/[#*`>_[\]!<>]/g, '').slice(0, 200).trim();
       const payload: ArticlePayload = {
         title: title.trim(),
         subtitle: subtitle.trim() || undefined,
-        content: editArticle ? content : mdToHtml(content),
+        content: renderedContent,
+        contentSource,
         excerpt: excerpt.trim() || autoExcerpt,
         coverImage: editArticle ? (coverImage || null) : (coverImage || undefined),
         published,
@@ -332,10 +381,9 @@ export const WriteArticle = () => {
                 </div>
                 <h1 className="mb-3 text-4xl font-bold leading-tight">{title || 'Untitled'}</h1>
                 {subtitle && <p className="mb-8 text-xl text-muted-foreground">{subtitle}</p>}
-                <article
-                  className="prose prose-lg prose-slate dark:prose-invert prose-a:text-brand marker:text-brand"
-                  dangerouslySetInnerHTML={{ __html: mdToHtml(content) }}
-                />
+                <article className="prose prose-lg prose-slate dark:prose-invert prose-a:text-brand marker:text-brand">
+                  <ArticleContentRenderer source={editorTextToContentSource(content)} legacyHtml="" />
+                </article>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-6">
@@ -493,6 +541,12 @@ export const WriteArticle = () => {
                     </ToolBtn>
                   ))}
                   <div className="mx-1 h-5 w-px bg-border" />
+                  <ToolBtn title="Insert video" onClick={insertVideoBlock}>
+                    <Video size={15} />
+                  </ToolBtn>
+                  <ToolBtn title="Insert rich link" onClick={insertRichLinkBlock}>
+                    <ExternalLink size={15} />
+                  </ToolBtn>
                   <ToolBtn
                     title="Upload image into article"
                     onClick={() => inlineInputRef.current?.click()}

@@ -1,4 +1,5 @@
 const Joi = require("joi");
+const { normaliseArticleContentSource } = require("./contentContract");
 
 /**
  * Content is stored as HTML and rendered into the reader's page, so the size
@@ -10,6 +11,14 @@ const Joi = require("joi");
 const MAX_CONTENT_BYTES = 512 * 1024;
 
 const content = Joi.string().min(10).max(MAX_CONTENT_BYTES);
+
+const contentSource = Joi.any().custom((value, helpers) => {
+  try {
+    return normaliseArticleContentSource(value);
+  } catch (err) {
+    return helpers.message(err.message);
+  }
+});
 
 /**
  * Cover images are rendered into an <img src>. Constraining the scheme stops a
@@ -39,6 +48,7 @@ const createArticleSchema = Joi.object({
   title: Joi.string().trim().min(3).max(200).required(),
   subtitle: Joi.string().trim().max(300).optional().allow(""),
   content: content.required(),
+  contentSource: contentSource.optional().allow(null),
   excerpt: Joi.string().trim().max(500).optional().allow(""),
   coverImage: imageUrl.optional().allow(""),
   published: Joi.boolean().optional(),
@@ -54,6 +64,7 @@ const updateArticleSchema = Joi.object({
   title: Joi.string().trim().min(3).max(200).optional(),
   subtitle: Joi.string().trim().max(300).optional().allow(""),
   content: content.optional(),
+  contentSource: contentSource.optional().allow(null),
   excerpt: Joi.string().trim().max(500).optional().allow(""),
   coverImage: imageUrl.optional().allow("", null),
   published: Joi.boolean().optional(),

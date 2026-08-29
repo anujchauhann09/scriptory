@@ -72,7 +72,6 @@ create_secret scriptory-task-token        "$(openssl rand -base64 32)"
 # setting; config/database.js would add it anyway, but stating it in the secret
 # makes the intent explicit and survives a change to that default.
 create_secret scriptory-database-url      "postgresql://scriptory:PASSWORD@${PRIVATE_IP}:5432/scriptory?sslmode=require"
-create_secret scriptory-cloudinary-secret "..."
 create_secret scriptory-smtp-pass         "..."
 create_secret scriptory-gemini-key        "..."
 ```
@@ -87,7 +86,7 @@ gcloud iam service-accounts create scriptory-migrate  # runs migrations only
 # can read the database URL and nothing else — not the JWT signing key, not the
 # SMTP password.
 for secret in scriptory-jwt-secret scriptory-task-token scriptory-database-url \
-              scriptory-cloudinary-secret scriptory-smtp-pass scriptory-gemini-key; do
+              scriptory-smtp-pass scriptory-gemini-key; do
   gcloud secrets add-iam-policy-binding "$secret" \
     --member="serviceAccount:scriptory-api@$PROJECT_ID.iam.gserviceaccount.com" \
     --role=roles/secretmanager.secretAccessor
@@ -102,6 +101,25 @@ gcloud secrets add-iam-policy-binding scriptory-database-url \
 Cloud SQL Auth Proxy against the Admin API; connecting straight to a private IP
 over TCP is plain networking and needs no Cloud SQL IAM at all. Granting it
 would be permission this deployment never exercises.
+
+### Media bucket
+
+Scriptory stores new uploaded media in `gs://scriptory-media-506807` through the
+API service identity. Do not create service-account key files and do not grant a
+project-wide Storage Admin role. The bucket should stay privately writable, with
+object access scoped to the runtime identity only:
+
+```bash
+gcloud storage buckets create gs://scriptory-media-506807   --project=scriptory-506807   --location=asia-south1   --uniform-bucket-level-access
+
+gcloud storage buckets add-iam-policy-binding gs://scriptory-media-506807   --member="serviceAccount:scriptory-api@scriptory-506807.iam.gserviceaccount.com"   --role=roles/storage.objectUser
+```
+
+`MEDIA_STORAGE_PROVIDER=gcs` and `GCS_MEDIA_BUCKET=scriptory-media-506807` are
+plain environment variables in `deploy/gcp/service.yaml`. The app uses
+Application Default Credentials on Cloud Run, so there is no GCS credential
+secret to mount. New media URLs are API URLs (`/api/media/:token`) so the bucket
+itself does not need to be public.
 
 The build identity orchestrates and nothing more — it pushes images, manages
 Cloud Run, and acts as the two runtime identities, but it is **never given the
@@ -163,14 +181,12 @@ prefers the file when both are present.
 ## 3. Deploy
 
 `service.yaml` is the full declarative definition — scaling, env, secrets,
-probes. Apply it once (and whenever that config changes) before the first
-pipeline run; afterwards the pipeline only rolls the image forward.
+probes, service account and traffic. Cloud Build renders the just-built image
+tag into that manifest and applies it with `gcloud run services replace`, so
+runtime configuration is not inherited from stale live revisions.
 
 ```bash
-# Fill in PROJECT_ID / REGION / the image reference first.
-gcloud run services replace deploy/gcp/service.yaml --region=$REGION
-
-gcloud builds submit --config=deploy/gcp/cloudbuild.yaml     # build → push → migrate → deploy
+gcloud builds submit --config=deploy/gcp/cloudbuild.yaml     # build → push → migrate → apply service.yaml
 PROJECT_ID=$PROJECT_ID REGION=$REGION API_URL=https://... ./deploy/gcp/scheduler-jobs.sh
 ```
 
@@ -183,9 +199,7 @@ Deploy twice. The first pass sets one explicit flag:
 
 ```bash
 # Pass 1 — boot once without a public URL.
-gcloud run services update scriptory-api --region=$REGION \
-  --update-env-vars=API_URL_PENDING=true
-
+# In deploy/gcp/service.yaml, comment API_URL and uncomment API_URL_PENDING, then run:
 gcloud builds submit --config=deploy/gcp/cloudbuild.yaml
 
 # Read the URL Cloud Run generated. Never guess this format.
@@ -194,9 +208,8 @@ API_URL=$(gcloud run services describe scriptory-api --region=$REGION \
 echo "Generated URL: $API_URL"
 
 # Pass 2 — set the real value and drop the flag.
-gcloud run services update scriptory-api --region=$REGION \
-  --update-env-vars=API_URL=$API_URL \
-  --remove-env-vars=API_URL_PENDING
+# In deploy/gcp/service.yaml, set API_URL to $API_URL and remove API_URL_PENDING, then run:
+gcloud builds submit --config=deploy/gcp/cloudbuild.yaml
 ```
 
 Then point the scheduler at the same URL, and set `FRONTEND_URL` on the API plus
@@ -229,6 +242,56 @@ you do not own; guessing the `run.app` hostname bakes in a format Google does no
 guarantee; and deriving it from the request's `Host` header is host-header
 injection — an attacker sends `Host: evil.example` and the next unsubscribe link
 carries a live token to their server.
+
+### Seeding the admin account
+
+The database starts empty, and nothing in the pipeline seeds it. Until the admin
+row exists, signing in returns **"Invalid email or password"** — the same message
+a wrong password produces, because login compares against a dummy hash when the
+account is missing so timing and wording cannot reveal which accounts exist.
+A brand-new deployment therefore looks exactly like a bad password.
+
+`deploy/gcp/seed-job.sh` runs the seed as a one-time Cloud Run Job on the VPC:
+
+```bash
+PROJECT_ID=$PROJECT_ID REGION=asia-south1 ADMIN_EMAIL=admin@scriptory.com \
+  ./deploy/gcp/seed-job.sh
+```
+
+It is idempotent — it prints "Admin already exists" and changes nothing when the
+account is present — so running it is also how you check whether the database has
+been seeded at all.
+
+**`ADMIN_PASSWORD` is never mounted on the API service.** Only the seed reads it;
+the running API loads it into config and never uses it. A dedicated
+`scriptory-seed` identity holds the grant, scoped to two secrets, and the job and
+its binding are deleted once the admin can sign in.
+
+Two things that will stop the seed, both by design:
+
+- **The password must survive the strength check.** With `NODE_ENV=production`
+  the seed *refuses* rather than warns: under 12 characters, fewer than three
+  character classes, four repeated characters, an obvious sequence, or any of
+  `pass`/`admin`/`login`/`secret`/`welcome`/`qwerty`/`letmein` anywhere in it.
+  `Admin@09052003` fails on the word "admin". Test the stored value without
+  printing it:
+
+  ```bash
+  gcloud secrets versions access latest --secret=scriptory-admin-password \
+    | node -e '
+      let p="";process.stdin.on("data",d=>p+=d).on("end",()=>{
+        p=p.replace(/\r?\n$/,"");
+        const classes=[/[a-z]/,/[A-Z]/,/\d/,/[^A-Za-z0-9]/].filter(r=>r.test(p)).length;
+        const weak = p.length<12||classes<3||/(.)\1{3,}/.test(p)
+          ||/(?:0123|1234|2345|3456|4567|5678|6789|abcd|qwer)/i.test(p)
+          ||/pass|admin|login|secret|welcome|qwerty|letmein/i.test(p);
+        console.log(weak?"REFUSED by the production seed gate":"accepted");
+      })'
+  ```
+
+- **`ADMIN_EMAIL` is lower-cased** by the seed, matching how login normalises the
+  address. Seeding `Admin@Example.com` while logging in as `admin@example.com`
+  would otherwise create a row the login query can never find.
 
 ### Why migrations run in a Cloud Run Job
 

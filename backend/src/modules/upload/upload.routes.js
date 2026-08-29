@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { uploadCover, uploadInline, uploadAvatar } = require("../../config/cloudinary");
+const storageService = require("../storage/storage.service");
 const { uploadImage } = require("./upload.controller");
 const authMiddleware = require("../../middleware/auth.middleware");
 const adminMiddleware = require("../../middleware/admin.middleware");
@@ -10,28 +10,32 @@ const router = Router();
 /**
  * Middleware order is load-bearing: authenticate, authorise, then rate limit,
  * and only then let multer start consuming the body. Any other order streams an
- * unauthenticated multi-megabyte upload into paid third-party storage before
- * the request is rejected.
+ * unauthenticated multi-megabyte upload into paid storage before rejection.
  */
 router.post(
   "/cover",
   authMiddleware,
   adminMiddleware,
   limits.upload,
-  uploadCover.single("image"),
-  uploadImage
+  storageService.uploadMiddleware("cover"),
+  uploadImage("cover")
 );
 router.post(
   "/inline",
   authMiddleware,
   adminMiddleware,
   limits.upload,
-  uploadInline.single("image"),
-  uploadImage
+  storageService.uploadMiddleware("inline"),
+  uploadImage("inline")
 );
 
-// Open to every signed-in user, so the per-account limit is what bounds the
-// storage bill here.
-router.post("/avatar", authMiddleware, limits.upload, uploadAvatar.single("image"), uploadImage);
+// Open to every signed-in user, so the per-account limit is what bounds storage cost.
+router.post(
+  "/avatar",
+  authMiddleware,
+  limits.upload,
+  storageService.uploadMiddleware("avatar"),
+  uploadImage("avatar")
+);
 
 module.exports = router;

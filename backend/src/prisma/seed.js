@@ -16,7 +16,15 @@ function isWeakPassword(pw = "") {
 }
 
 async function main() {
-  const email = process.env.ADMIN_EMAIL || "";
+  /**
+   * Lower-cased to match how the login path stores and looks up addresses.
+   *
+   * auth.service normalises the email on both register and login, so an
+   * ADMIN_EMAIL with any capital letter would seed a row that the login query
+   * can never find — the sign-in fails with "Invalid email or password" even
+   * though the password is correct, which is close to undiagnosable.
+   */
+  const email = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
   // Also honours ADMIN_PASSWORD_FILE, so a mounted secret can seed a
   // production database without the value ever entering the environment.
   const password = readSecret("ADMIN_PASSWORD") || "";

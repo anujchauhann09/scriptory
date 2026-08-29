@@ -117,31 +117,26 @@ steps:
 
   # 3. Shift traffic, only once the schema is in place.
   #
-  #    The network flags are repeated here deliberately. `gcloud run deploy`
-  #    preserves existing service configuration, so on an already-configured
-  #    service they are redundant — but on a service that has never had
-  #    service.yaml applied, omitting them produces a revision with no route to
-  #    the database, which fails at the first query rather than at deploy time.
-  #    Three duplicated flags is a better trade than a deployment that can
-  #    silently come up unable to reach Cloud SQL.
+  #    service.yaml is the canonical Cloud Run runtime definition: scaling,
+  #    networking, env vars, secret references, probes, service account and
+  #    traffic policy live there. The pipeline renders only the image field to
+  #    the just-built immutable tag, then applies the full service definition.
+  #
+  #    This matters because `gcloud run deploy --image=...` does not read
+  #    service.yaml. It creates a new revision from the currently deployed
+  #    service config, preserving stale env vars and omitting any new env vars
+  #    that only exist in the manifest.
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      - run
-      - deploy
-      - ${_SERVICE}
-      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:$BUILD_ID
-      - --region=${_REGION}
-      - --platform=managed
-      - --network=${_NETWORK}
-      - --subnet=${_SUBNET}
-      - --vpc-egress=private-ranges-only
-      - --service-account=${_API_SA}@$PROJECT_ID.iam.gserviceaccount.com
-      # No --allow-unauthenticated: the IAM policy is managed deliberately
-      # rather than reasserted on every build.
-      # Everything else — scaling, env, secrets, probes — comes from
-      # service.yaml, which stays the full declarative definition.
+      - -ceu
+      - |
+        : "${_SERVICE}" "${_API_SA}"
+        SERVICE_CONFIG=/tmp/scriptory-service.yaml
+        cp deploy/gcp/service.yaml "$$SERVICE_CONFIG"
+        sed -i "s|^          - image: .*|          - image: ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:$BUILD_ID|" "$$SERVICE_CONFIG"
+        gcloud run services replace "$$SERVICE_CONFIG" --region=${_REGION}
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:$BUILD_ID

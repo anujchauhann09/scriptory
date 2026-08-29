@@ -6,7 +6,7 @@ A full-stack blogging platform built with React + Node.js. Premium reading exper
 
 **Frontend** — React 18 (Vite), TypeScript, Tailwind CSS v4, Framer Motion, React Router, React Helmet Async, marked + DOMPurify (markdown), highlight.js (code), mermaid (diagrams)
 
-**Backend** — Node.js, Express, Prisma ORM, PostgreSQL, cookie-based JWT auth, TOTP 2FA (otplib), Nodemailer (SMTP), Cloudinary (uploads), sharp (OG images), node-cron (scheduling), Gemini embeddings (related posts), Winston logging
+**Backend** — Node.js, Express, Prisma ORM, PostgreSQL, cookie-based JWT auth, TOTP 2FA (otplib), Nodemailer (SMTP), GCS media storage (uploads), sharp (OG images), node-cron (scheduling), Gemini embeddings (related posts), Winston logging
 
 ## Features
 
@@ -54,7 +54,7 @@ A full-stack blogging platform built with React + Node.js. Premium reading exper
 ### Experience & performance
 - Premium "red-noir" design (glassmorphism, brand accent, Manrope), dark / light mode
 - **Command palette (⌘K)**, **homepage stats strip**, scroll-reveal micro-interactions
-- **Image optimization** (`SmartImage`: Cloudinary responsive `srcset` + blur-up)
+- **Image rendering** (`SmartImage`: lazy image rendering for GCS media)
 - SWR in-memory caching, route code-splitting, debounced search
 
 ## Project Structure
@@ -70,7 +70,7 @@ scriptory/
 │       │   ├── platform.js   # host abstraction (proxy hops, instance cap, region)
 │       │   ├── database.js   # pooling + socket/TCP transport
 │       │   ├── secrets.js    # env or *_FILE mounted secrets
-│       │   └── db, cloudinary, mailer, env
+│       │   └── db, mailer, env
 │       ├── middleware/       # auth, admin, optionalAuth, csrf, rateLimit,
 │       │                     # security (helmet/CORS), validate, requestContext, error
 │       ├── modules/
@@ -105,7 +105,7 @@ scriptory/
 ### Prerequisites
 - Node.js 22+
 - PostgreSQL database
-- Cloudinary account (image uploads)
+- Google Cloud Storage bucket for media uploads
 - Optional: SMTP credentials (emails), `GEMINI_API_KEY` (embedding-based related posts)
 
 ### Backend
@@ -149,10 +149,9 @@ TWO_FACTOR_ISSUER=Scriptory
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
 
-# Cloudinary (uploads)
-CLOUDINARY_CLOUD_NAME=
-CLOUDINARY_API_KEY=
-CLOUDINARY_API_SECRET=
+# GCS media storage (uploads)
+MEDIA_STORAGE_PROVIDER=gcs
+GCS_MEDIA_BUCKET=scriptory-media-506807
 
 # SMTP (optional — emails logged & skipped if unset; data still persists)
 SMTP_HOST=
@@ -187,15 +186,15 @@ EMBEDDING_MODEL=text-embedding-004
 | POST/GET | `/api/newsletter/{subscribe,unsubscribe,subscribers,digest}` | —/Admin | Subscribe / unsubscribe / manage / digest |
 | GET | `/api/analytics` · `/api/audit` | Admin | Dashboard + audit log |
 | GET | `/api/stats` · `/api/tags` | — | Public totals + tags |
-| POST | `/api/upload/{cover,inline,avatar}` | Admin/User | Cloudinary uploads |
+| POST | `/api/upload/{cover,inline,avatar}` | Admin/User | GCS-backed image uploads |
+| GET | `/api/media/:token` | — | Read private bucket media through the API |
 | GET | `/rss.xml` · `/sitemap.xml` · `/robots.txt` · `/og/:slug.png` | — | Feeds + OG images (served at root) |
 
 See `backend/README.md` for the full reference.
 
 ## Deployment
 
-The API ships as a plain OCI container (`backend/Dockerfile`) with no vendor SDK
-and no vendor-specific code path. Host-specific details arrive as environment
+The API ships as a plain OCI container (`backend/Dockerfile`) with provider details isolated behind small adapters. Host-specific details arrive as environment
 variables and are normalised by `src/config/platform.js`, so moving between
 providers means writing a manifest — not touching `src/`.
 

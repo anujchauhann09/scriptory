@@ -42,8 +42,8 @@ spec:
         run.googleapis.com/network-interfaces: '[{"network":"default","subnetwork":"default"}]'
         # Only RFC1918 traffic is routed through the VPC. `all-traffic` would
         # send outbound internet through it too, which then needs a Cloud NAT —
-        # a paid resource this deployment has no other reason to run. Cloudinary,
-        # SMTP and Gemini keep egressing directly.
+        # a paid resource this deployment has no other reason to run. SMTP,
+        # Gemini and Google APIs keep egressing directly.
         run.googleapis.com/vpc-access-egress: private-ranges-only
         run.googleapis.com/execution-environment: gen2
     spec:
@@ -159,12 +159,6 @@ spec:
             - name: SMTP_USER
               value: "heyanujchauhan@gmail.com"
 
-            - name: CLOUDINARY_CLOUD_NAME
-              value: "dmdxu550w"
-
-            - name: CLOUDINARY_API_KEY
-              value: "686252262321866"
-
             - name: MAIL_FROM
               value: "Scriptory <heyanujchauhan@gmail.com>"
 
@@ -185,6 +179,10 @@ spec:
 
             - name: ADMIN_EMAIL
               value: "admin@scriptory.com"
+            - name: MEDIA_STORAGE_PROVIDER
+              value: gcs
+            - name: GCS_MEDIA_BUCKET
+              value: scriptory-media-506807
 
             # --- secrets --------------------------------------------------
             # Mounted from Secret Manager, never baked into the image or set as
@@ -199,9 +197,6 @@ spec:
             - name: TASK_RUNNER_TOKEN
               valueFrom:
                 secretKeyRef: { name: scriptory-task-token, key: latest }
-            - name: CLOUDINARY_API_SECRET
-              valueFrom:
-                secretKeyRef: { name: scriptory-cloudinary-secret, key: latest }
             - name: SMTP_PASS
               valueFrom:
                 secretKeyRef: { name: scriptory-smtp-pass, key: latest }

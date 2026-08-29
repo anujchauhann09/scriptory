@@ -15,10 +15,10 @@
     "test:security": "node --test tests/security.test.js"
   },
   "dependencies": {
+    "@google-cloud/storage": "^8.0.1",
     "@google/genai": "^2.11.0",
     "@prisma/client": "^5.10.0",
     "bcryptjs": "^2.4.3",
-    "cloudinary": "^1.41.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -29,7 +29,6 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^2.1.1",
-    "multer-storage-cloudinary": "^4.0.0",
     "node-cron": "^4.6.0",
     "nodemailer": "^9.0.3",
     "otplib": "^12.0.1",

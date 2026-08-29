@@ -101,6 +101,11 @@ const config = {
   adminEmail: process.env.ADMIN_EMAIL,
   adminPassword: readSecret("ADMIN_PASSWORD"),
 
+  media: {
+    provider: process.env.MEDIA_STORAGE_PROVIDER || "gcs",
+    bucket: process.env.GCS_MEDIA_BUCKET,
+  },
+
   // SMTP / email (all optional — email sending is skipped gracefully if unset)
   smtp: {
     host: process.env.SMTP_HOST,
@@ -218,6 +223,12 @@ if (isProduction) {
     problems.push(
       "SCHEDULER_MODE=external requires TASK_RUNNER_TOKEN so the scheduler can authenticate"
     );
+  }
+  if (config.media.provider !== "gcs") {
+    problems.push(`MEDIA_STORAGE_PROVIDER must be gcs in production (got "${config.media.provider}")`);
+  }
+  if (!config.media.bucket) {
+    problems.push("GCS_MEDIA_BUCKET is required in production for media uploads");
   }
 }
 

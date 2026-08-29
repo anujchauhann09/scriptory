@@ -132,6 +132,9 @@ model Article {
   slug        String         @unique
   excerpt     String?
   content     String
+  contentSource Json?
+  contentFormat String         @default("legacy-html")
+  contentVersion Int           @default(0)
   coverImage  String?
   published   Boolean        @default(true)
   publishAt   DateTime? // when set in the future, a cron auto-publishes it

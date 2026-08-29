@@ -1,3 +1,5 @@
+import type { ArticleContentSource } from './article-content/content';
+
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 /** Requests that outlive this are abandoned rather than left hanging forever. */
@@ -154,6 +156,9 @@ export interface ApiArticle {
   slug: string;
   excerpt?: string;
   content: string;
+  contentSource?: ArticleContentSource | null;
+  contentFormat?: string;
+  contentVersion?: number;
   coverImage?: string;
   published: boolean;
   readingTime?: number;
@@ -191,6 +196,7 @@ export interface ArticlePayload {
   title: string;
   subtitle?: string;
   content: string;
+  contentSource?: ArticleContentSource | null;
   excerpt?: string;
   coverImage?: string | null;
   published?: boolean;
