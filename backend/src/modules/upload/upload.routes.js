@@ -1,6 +1,6 @@
 const { Router } = require("express");
 const storageService = require("../storage/storage.service");
-const { uploadImage } = require("./upload.controller");
+const { uploadImage, uploadMedia } = require("./upload.controller");
 const authMiddleware = require("../../middleware/auth.middleware");
 const adminMiddleware = require("../../middleware/admin.middleware");
 const limits = require("../../middleware/rateLimit.middleware");
@@ -27,6 +27,14 @@ router.post(
   limits.upload,
   storageService.uploadMiddleware("inline"),
   uploadImage("inline")
+);
+router.post(
+  "/video",
+  authMiddleware,
+  adminMiddleware,
+  limits.upload,
+  storageService.uploadMiddleware("video"),
+  uploadMedia("video")
 );
 
 // Open to every signed-in user, so the per-account limit is what bounds storage cost.

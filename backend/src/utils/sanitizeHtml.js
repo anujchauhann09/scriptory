@@ -25,7 +25,7 @@ const ALLOWED_TAGS = [
   "strong", "em", "b", "i", "u", "s", "del", "ins", "mark", "sub", "sup",
   "ul", "ol", "li",
   "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption",
-  "a", "img", "figure", "figcaption",
+  "a", "img", "video", "source", "figure", "figcaption",
   "details", "summary",
 ];
 
@@ -39,6 +39,8 @@ const ALLOWED_TAGS = [
 const ALLOWED_ATTRIBUTES = {
   a: ["href", "title", "target", "rel", "name", "id"],
   img: ["src", "alt", "title", "width", "height", "loading", "decoding"],
+  video: ["src", "title", "controls", "preload", "poster", "width", "height"],
+  source: ["src", "type"],
   code: ["class"],
   pre: ["class"],
   span: ["class"],
@@ -57,7 +59,7 @@ const options = {
   // Anything not on this list — javascript:, vbscript:, file: — is dropped.
   // `data:` is excluded for links and constrained for images below.
   allowedSchemes: ["http", "https", "mailto"],
-  allowedSchemesByTag: { img: ["http", "https", "data"] },
+  allowedSchemesByTag: { img: ["http", "https", "data"], video: ["http", "https"], source: ["http", "https"] },
   allowedSchemesAppliedToAttributes: ["href", "src", "cite"],
   // A protocol-relative URL inherits the page's scheme and slips past naive
   // scheme checks; requiring an explicit protocol removes that class entirely.

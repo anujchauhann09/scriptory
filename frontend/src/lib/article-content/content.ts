@@ -11,6 +11,7 @@ export type ArticleBlock =
   | { type: 'markdown'; markdown: string }
   | { type: 'image'; src: string; alt: string; caption?: string; publicId?: string; width?: number; height?: number }
   | { type: 'video'; provider: 'youtube' | 'vimeo'; id: string; title?: string; caption?: string }
+  | { type: 'videoFile'; src: string; title?: string; caption?: string; publicId?: string; poster?: string }
   | { type: 'code'; language?: string; code: string; filename?: string }
   | { type: 'callout'; tone: 'note' | 'tip' | 'warning' | 'important'; content: string }
   | { type: 'diagram'; engine: 'mermaid'; source: string }
@@ -120,6 +121,16 @@ function parseDirective(name: string, attrs: Attrs, body: string): ArticleBlock 
       ...(attrs.caption ? { caption: attrs.caption } : {}),
     };
   }
+  if (name === 'video-file' && attrs.src) {
+    return {
+      type: 'videoFile',
+      src: attrs.src,
+      ...(attrs.title ? { title: attrs.title } : {}),
+      ...(attrs.caption ? { caption: attrs.caption } : {}),
+      ...(attrs.publicId ? { publicId: attrs.publicId } : {}),
+      ...(attrs.poster ? { poster: attrs.poster } : {}),
+    };
+  }
   if (name === 'rich-link' && attrs.url) {
     return {
       type: 'richLink',
@@ -181,6 +192,7 @@ export function contentSourceToEditorText(source: ArticleContentSource): string 
     if (block.type === 'markdown') return block.markdown;
     if (block.type === 'image') return `:::image ${attrsToText({ src: block.src, alt: block.alt, caption: block.caption || '' })}\n:::`;
     if (block.type === 'video') return `:::video ${attrsToText({ provider: block.provider, id: block.id, title: block.title || '', caption: block.caption || '' })}\n:::`;
+    if (block.type === 'videoFile') return `:::video-file ${attrsToText({ src: block.src, title: block.title || '', caption: block.caption || '', publicId: block.publicId || '', poster: block.poster || '' })}\n:::`;
     if (block.type === 'richLink') return `:::rich-link ${attrsToText({ url: block.url, title: block.title || '', description: block.description || '', image: block.image || '' })}\n:::`;
     if (block.type === 'callout') return `:::callout ${attrsToText({ tone: block.tone })}\n${block.content}\n:::`;
     if (block.type === 'code') return `:::code ${attrsToText({ language: block.language || '', filename: block.filename || '' })}\n${block.code}\n:::`;
@@ -192,7 +204,7 @@ export function contentSourceToEditorText(source: ArticleContentSource): string 
 
 export function contentSourceToHtml(source: ArticleContentSource): string {
   const html = source.blocks.map((block) => blockToHtml(block)).join('\n');
-  return DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'rel', 'open'], ADD_TAGS: ['details', 'summary'] }) as unknown as string;
+  return DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'rel', 'open', 'controls', 'preload', 'poster'], ADD_TAGS: ['details', 'summary', 'video', 'source'] }) as unknown as string;
 }
 
 function blockToHtml(block: ArticleBlock): string {
@@ -205,6 +217,11 @@ function blockToHtml(block: ArticleBlock): string {
     const label = block.title || `${block.provider} video`;
     const url = block.provider === 'youtube' ? `https://www.youtube.com/watch?v=${block.id}` : `https://vimeo.com/${block.id}`;
     return `<figure><p><a href="${escapeAttr(url)}">${escapeHtml(label)}</a></p>${block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : ''}</figure>`;
+  }
+  if (block.type === 'videoFile') {
+    const title = block.title ? ` title="${escapeAttr(block.title)}"` : '';
+    const poster = block.poster ? ` poster="${escapeAttr(block.poster)}"` : '';
+    return `<figure class="article-video"><div class="article-video-frame"><video controls preload="metadata"${poster}${title}><source src="${escapeAttr(block.src)}" type="video/mp4"></video></div>${block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : ''}</figure>`;
   }
   if (block.type === 'code') {
     const language = block.language ? ` class="language-${escapeAttr(block.language)}"` : '';

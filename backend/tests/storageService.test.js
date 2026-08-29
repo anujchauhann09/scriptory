@@ -75,6 +75,20 @@ test("GCS read and delete use only validated object names", async () => {
   assert.throws(() => decodeObjectToken(Buffer.from("../secret").toString("base64url")), /Invalid media object/);
 });
 
+test("GCS video uploads use the videos namespace and MP4 metadata", async () => {
+  const { storage, calls } = fakeStorage();
+  const gcs = new GCSStorage({ bucketName: "bucket", apiUrl: "https://api.example.com", storage });
+
+  const uploaded = await gcs.upload({
+    kind: "video",
+    file: image({ originalname: "demo clip.mp4", mimetype: "video/mp4", buffer: Buffer.from("mp4-data") }),
+  });
+
+  assert.match(uploaded.publicId, /^videos\/articles\/\d{4}\/\d{2}\/\d{2}\/[0-9a-f-]+\.mp4$/);
+  assert.equal(calls.save[0].options.metadata.contentType, "video/mp4");
+  assert.equal(calls.save[0].options.metadata.metadata.originalName, "demo-clip.mp4");
+});
+
 test("GCS upload cleans up a partial object when save fails", async () => {
   const { storage, calls } = fakeStorage({ failSave: true });
   const gcs = new GCSStorage({ bucketName: "bucket", apiUrl: "https://api.example.com", storage });

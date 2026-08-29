@@ -1,14 +1,14 @@
 const { sendSuccess, sendError } = require("../../utils/response");
 const storageService = require("../storage/storage.service");
 
-const uploadImage = (kind) => async (req, res, next) => {
+const uploadMedia = (kind) => async (req, res, next) => {
   try {
     if (!req.file) {
       return sendError(res, 400, "No file provided");
     }
 
-    const uploaded = await storageService.uploadImage(kind, req.file);
-    return sendSuccess(res, 200, "Image uploaded", {
+    const uploaded = await storageService.uploadMedia(kind, req.file);
+    return sendSuccess(res, 200, kind === "video" ? "Video uploaded" : "Image uploaded", {
       url: uploaded.url,
       publicId: uploaded.publicId,
     });
@@ -17,4 +17,6 @@ const uploadImage = (kind) => async (req, res, next) => {
   }
 };
 
-module.exports = { uploadImage };
+const uploadImage = uploadMedia;
+
+module.exports = { uploadImage, uploadMedia };

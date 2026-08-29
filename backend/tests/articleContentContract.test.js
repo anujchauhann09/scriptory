@@ -10,6 +10,7 @@ test("normalises a valid hybrid article source", () => {
       { type: "markdown", markdown: "# Hello\n\nBody" },
       { type: "image", src: "https://cdn.example.com/media/sample.gif", alt: "Demo animation", caption: "A useful GIF" },
       { type: "video", provider: "youtube", id: "dQw4w9WgXcQ", title: "Demo video" },
+      { type: "videoFile", src: "https://api.example.com/api/media/video-token", title: "Uploaded demo", caption: "MP4 demo" },
       { type: "callout", tone: "tip", content: "Prefer boring queues." },
       { type: "diagram", engine: "mermaid", source: "graph TD; A-->B;" },
       { type: "richLink", url: "https://example.com/post", title: "Example" },
@@ -18,7 +19,7 @@ test("normalises a valid hybrid article source", () => {
 
   assert.equal(source.version, 1);
   assert.equal(source.format, "hybrid");
-  assert.equal(source.blocks.length, 6);
+  assert.equal(source.blocks.length, 7);
   assert.match(sourceToPlainText(source), /Prefer boring queues/);
 });
 
@@ -31,6 +32,11 @@ test("rejects unsafe or unknown structured content", () => {
   assert.throws(
     () => normaliseArticleContentSource({ version: 1, format: "hybrid", blocks: [{ type: "image", src: "javascript:alert(1)", alt: "x" }] }),
     /Image source/
+  );
+
+  assert.throws(
+    () => normaliseArticleContentSource({ version: 1, format: "hybrid", blocks: [{ type: "videoFile", src: "javascript:alert(1)" }] }),
+    /Video source/
   );
 
   assert.throws(

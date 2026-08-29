@@ -52,7 +52,7 @@ frontend/
 | Home | `/` | Hero, **stats strip**, featured article (scroll-reveal), recent grid |
 | Articles | `/articles` | Paginated list, tag filter + debounced full-text search (reads `?tag`/`?search`) |
 | Article Detail | `/articles/:slug` | Rich content (**syntax highlighting, callouts, Mermaid, series**), **TOC + scroll-spy**, **reading themes** (font size + sepia), progress "% / min left", **bookmark**, likes, comments, share, related, back-to-top |
-| Write / Edit | `/write` | **Full-markdown editor** (marked), callout/collapsible/diagram toolbar, cover upload, tags, **series**, **schedule publish**, draft toggle (**admin**) |
+| Write / Edit | `/write` | **Full-markdown editor** (marked), callout/collapsible/diagram/video toolbar, cover/media upload, tags, **series**, **schedule publish**, draft toggle (**admin**) |
 | Admin | `/admin` | **Overview** (stats + charts), Inbox, Subscribers (CSV + **send digest**), Activity (**admin**) |
 | Profile | `/profile` | Edit profile, **Security** (change password, 2FA), **Saved articles** (bookmarks) |
 | Author | `/author` | Bio, avatar, social links, all articles + Person JSON-LD |

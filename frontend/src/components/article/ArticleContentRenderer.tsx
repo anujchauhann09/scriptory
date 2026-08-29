@@ -41,6 +41,17 @@ const VideoRenderer = ({ block }: { block: Extract<ArticleBlock, { type: 'video'
   </figure>
 );
 
+const VideoFileRenderer = ({ block }: { block: Extract<ArticleBlock, { type: 'videoFile' }> }) => (
+  <figure className="article-video">
+    <div className="article-video-frame">
+      <video controls preload="metadata" poster={block.poster} title={block.title}>
+        <source src={block.src} type="video/mp4" />
+      </video>
+    </div>
+    {block.caption && <figcaption>{block.caption}</figcaption>}
+  </figure>
+);
+
 const CodeRenderer = ({ block }: { block: Extract<ArticleBlock, { type: 'code' }> }) => (
   <div className="article-code-block">
     {block.filename && <div className="article-code-filename">{block.filename}</div>}
@@ -74,6 +85,7 @@ const renderers = {
   markdown: MarkdownRenderer,
   image: ImageRenderer,
   video: VideoRenderer,
+  videoFile: VideoFileRenderer,
   code: CodeRenderer,
   callout: CalloutRenderer,
   diagram: DiagramRenderer,

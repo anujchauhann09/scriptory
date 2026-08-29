@@ -18,7 +18,7 @@ import {
 import {
   Bold, Italic, Code, Link2, ImagePlus, List, ListOrdered,
   Heading2, Heading3, Quote, Minus, Eye, EyeOff, X, Plus, Loader2,
-  Info, ChevronDown, Workflow, Video, ExternalLink,
+  Info, ChevronDown, Workflow, Video, FileVideo, ExternalLink,
 } from 'lucide-react';
 
 const ToolBtn = ({
@@ -107,6 +107,7 @@ export const WriteArticle = () => {
   const editUuid = searchParams.get('edit');
   const taRef = useRef<HTMLTextAreaElement>(null);
   const inlineInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   const [editArticle, setEditArticle] = useState<ApiArticle | null>(null);
   const [loadingEdit, setLoadingEdit] = useState(!!editUuid);
@@ -128,6 +129,7 @@ export const WriteArticle = () => {
   const [published, setPublished] = useState(true);
   const [saving, setSaving] = useState(false);
   const [inlineUploading, setInlineUploading] = useState(false);
+  const [videoUploading, setVideoUploading] = useState(false);
   const [error, setError] = useState('');
 
   // The taxonomy is a fixed list from the server. If the request fails the
@@ -218,6 +220,31 @@ export const WriteArticle = () => {
     }
   };
 
+
+  const handleVideoUpload = async (file: File) => {
+    setVideoUploading(true);
+    try {
+      const result = await uploadApi.video(file);
+      const title = window.prompt('Video title (for accessibility)')?.trim() || file.name.replace(/\.mp4$/i, '');
+      const caption = window.prompt('Caption (optional)')?.trim() || '';
+      const attrs = [
+        `src="${result.url}"`,
+        `title="${quoteAttr(title)}"`,
+        caption ? `caption="${quoteAttr(caption)}"` : '',
+        `publicId="${quoteAttr(result.publicId)}"`,
+      ].filter(Boolean).join(' ');
+      applyFormat((ta) => insertAtCursor(ta, `
+
+:::video-file ${attrs}
+:::
+
+`));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Video upload failed');
+    } finally {
+      setVideoUploading(false);
+    }
+  };
 
   const insertVideoBlock = () => {
     const rawUrl = window.prompt('YouTube or Vimeo URL')?.trim();
@@ -541,8 +568,15 @@ export const WriteArticle = () => {
                     </ToolBtn>
                   ))}
                   <div className="mx-1 h-5 w-px bg-border" />
-                  <ToolBtn title="Insert video" onClick={insertVideoBlock}>
+                  <ToolBtn title="Insert YouTube or Vimeo video" onClick={insertVideoBlock}>
                     <Video size={15} />
+                  </ToolBtn>
+                  <ToolBtn
+                    title="Upload MP4 video into article"
+                    onClick={() => videoInputRef.current?.click()}
+                    loading={videoUploading}
+                  >
+                    <FileVideo size={15} />
                   </ToolBtn>
                   <ToolBtn title="Insert rich link" onClick={insertRichLinkBlock}>
                     <ExternalLink size={15} />
@@ -562,6 +596,17 @@ export const WriteArticle = () => {
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       const file = e.target.files?.[0];
                       if (file) handleInlineUpload(file);
+                      e.target.value = '';
+                    }}
+                  />
+                  <input
+                    ref={videoInputRef}
+                    type="file"
+                    accept="video/mp4,.mp4"
+                    className="hidden"
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleVideoUpload(file);
                       e.target.value = '';
                     }}
                   />

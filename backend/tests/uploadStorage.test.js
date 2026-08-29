@@ -88,6 +88,24 @@ test("admin article uploads preserve response shape through the storage abstract
   assert.equal(mock.uploads[0].file.mimetype, "image/gif");
 });
 
+test("admin video uploads preserve response shape through the storage abstraction", async () => {
+  const admin = await createUser({ role: "ADMIN" });
+  const mock = provider();
+  storageService.setStorageProviderForTest(mock);
+
+  const res = await request(app)
+    .post("/api/upload/video")
+    .set("Origin", ORIGIN)
+    .set("Cookie", admin.cookie)
+    .attach("video", Buffer.from("mp4"), { filename: "demo.mp4", contentType: "video/mp4" });
+
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.deepEqual(Object.keys(res.body.data).sort(), ["publicId", "url"]);
+  assert.equal(res.body.data.url, "https://api.example.com/api/media/video-token");
+  assert.equal(mock.uploads[0].kind, "video");
+  assert.equal(mock.uploads[0].file.mimetype, "video/mp4");
+});
+
 test("upload routes preserve auth boundaries", async () => {
   const user = await createUser({ role: "USER" });
   storageService.setStorageProviderForTest(provider());
@@ -124,6 +142,14 @@ test("invalid MIME types and extensions are rejected before provider upload", as
     .set("Cookie", admin.cookie)
     .attach("image", Buffer.from("GIF89a"), { filename: "cover.gif", contentType: "image/gif" });
   assert.equal(coverGif.status, 400);
+
+  const badVideo = await request(app)
+    .post("/api/upload/video")
+    .set("Origin", ORIGIN)
+    .set("Cookie", admin.cookie)
+    .attach("video", Buffer.from("webm"), { filename: "demo.webm", contentType: "video/webm" });
+  assert.equal(badVideo.status, 400);
+
   assert.equal(mock.uploads.length, 0);
 });
 

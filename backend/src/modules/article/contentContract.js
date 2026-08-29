@@ -64,6 +64,14 @@ const normaliseBlock = (block) => {
       withOptional(out, "caption", optionalString(block.caption, 500));
       return out;
     }
+    case "videoFile": {
+      const out = { type: "videoFile", src: assertUrl(block.src, "Video source") };
+      withOptional(out, "title", optionalString(block.title, 200));
+      withOptional(out, "caption", optionalString(block.caption, 500));
+      withOptional(out, "publicId", optionalString(block.publicId, 300));
+      if (block.poster) out.poster = assertUrl(block.poster, "Video poster");
+      return out;
+    }
     case "code": {
       if (typeof block.code !== "string" || block.code.length > MAX_TEXT_CHARS) {
         fail("Code blocks require code text");
@@ -135,6 +143,7 @@ const sourceToPlainText = (source) => {
     if (block.type === "diagram") return block.source;
     if (block.type === "image") return [block.alt, block.caption].filter(Boolean).join(" ");
     if (block.type === "video") return [block.title, block.caption, block.provider, block.id].filter(Boolean).join(" ");
+    if (block.type === "videoFile") return [block.title, block.caption, block.src].filter(Boolean).join(" ");
     if (block.type === "richLink") return [block.title, block.description, block.url].filter(Boolean).join(" ");
     if (block.type === "layout") return sourceToPlainText({ blocks: block.blocks });
     return "";

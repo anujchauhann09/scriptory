@@ -186,7 +186,7 @@ EMBEDDING_MODEL=text-embedding-004
 | POST/GET | `/api/newsletter/{subscribe,unsubscribe,subscribers,digest}` | —/Admin | Subscribe / unsubscribe / manage / digest |
 | GET | `/api/analytics` · `/api/audit` | Admin | Dashboard + audit log |
 | GET | `/api/stats` · `/api/tags` | — | Public totals + tags |
-| POST | `/api/upload/{cover,inline,avatar}` | Admin/User | GCS-backed image uploads |
+| POST | `/api/upload/{cover,inline,video,avatar}` | Admin/User | GCS-backed media uploads |
 | GET | `/api/media/:token` | — | Read private bucket media through the API |
 | GET | `/rss.xml` · `/sitemap.xml` · `/robots.txt` · `/og/:slug.png` | — | Feeds + OG images (served at root) |
 

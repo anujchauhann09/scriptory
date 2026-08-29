@@ -17,8 +17,8 @@ import DOMPurify, { type Config } from 'dompurify';
  * either side of the boundary.
  */
 const CONFIG: Config = {
-  ADD_TAGS: ['details', 'summary'],
-  ADD_ATTR: ['target', 'rel', 'open'],
+  ADD_TAGS: ['details', 'summary', 'video', 'source'],
+  ADD_ATTR: ['target', 'rel', 'open', 'controls', 'preload', 'poster', 'type'],
   // Inline styles are dropped: they can position an invisible overlay across the
   // page, which is a clickjacking primitive that needs no script at all.
   FORBID_ATTR: ['style', 'onerror', 'onload', 'onclick'],

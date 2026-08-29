@@ -331,21 +331,24 @@ const MAX_UPLOAD_BYTES: Record<string, number> = {
   '/upload/cover': 5 * 1024 * 1024,
   '/upload/inline': 5 * 1024 * 1024,
   '/upload/avatar': 2 * 1024 * 1024,
+  '/upload/video': 50 * 1024 * 1024,
 };
 
 const ACCEPTED_IMAGE_TYPES = /^image\/(jpeg|png|webp|avif|gif)$/;
+const ACCEPTED_VIDEO_TYPES = /^video\/mp4$/;
 
-async function uploadFile(endpoint: string, file: File): Promise<UploadResult> {
-  if (!ACCEPTED_IMAGE_TYPES.test(file.type)) {
-    throw new Error('Please choose a JPEG, PNG, WebP, AVIF or GIF image.');
+async function uploadFile(endpoint: string, file: File, fieldName = 'image'): Promise<UploadResult> {
+  const isVideo = endpoint === '/upload/video';
+  if (isVideo ? !ACCEPTED_VIDEO_TYPES.test(file.type) : !ACCEPTED_IMAGE_TYPES.test(file.type)) {
+    throw new Error(isVideo ? 'Please choose an MP4 video.' : 'Please choose a JPEG, PNG, WebP, AVIF or GIF image.');
   }
   const limit = MAX_UPLOAD_BYTES[endpoint];
   if (limit && file.size > limit) {
-    throw new Error(`That image is too large. The maximum is ${Math.round(limit / 1024 / 1024)}MB.`);
+    throw new Error(`That ${isVideo ? 'video' : 'image'} is too large. The maximum is ${Math.round(limit / 1024 / 1024)}MB.`);
   }
 
   const form = new FormData();
-  form.append('image', file);
+  form.append(fieldName, file);
 
   const controller = new AbortController();
   // Uploads legitimately take longer than an API call.
@@ -380,6 +383,7 @@ export const uploadApi = {
   cover: (file: File) => uploadFile('/upload/cover', file),
   inline: (file: File) => uploadFile('/upload/inline', file),
   avatar: (file: File) => uploadFile('/upload/avatar', file),
+  video: (file: File) => uploadFile('/upload/video', file, 'video'),
 };
 
 export interface ContactPayload { name: string; email: string; message: string }

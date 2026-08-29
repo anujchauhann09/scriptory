@@ -185,7 +185,7 @@ Sessions are carried by an **httpOnly cookie**; a `Bearer` header is also accept
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | GET/PATCH | `/api/users/me` · `me/profile` | User | Current user (incl. `twoFactorEnabled`) / update profile |
-| POST | `/api/upload/{cover,inline,avatar}` | Admin/User | GCS-backed image uploads |
+| POST | `/api/upload/{cover,inline,video,avatar}` | Admin/User | GCS-backed media uploads |
 | GET | `/api/media/:token` | — | Stream private bucket media through the API |
 | GET | `/api/tags` | — | List all tags |
 | GET | `/api/stats` | — | Public totals (articles / views / topics) |
