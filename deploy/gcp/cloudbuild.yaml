@@ -135,7 +135,7 @@ steps:
         : "${_SERVICE}" "${_API_SA}"
         SERVICE_CONFIG=/tmp/scriptory-service.yaml
         cp deploy/gcp/service.yaml "$$SERVICE_CONFIG"
-        sed -i "s|^          - image: .*|          - image: ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:$BUILD_ID|" "$$SERVICE_CONFIG"
+        sed -i "s|^[[:space:]]*- image: .*|        - image: ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:$BUILD_ID|" "$$SERVICE_CONFIG"
         gcloud run services replace "$$SERVICE_CONFIG" --region=${_REGION}
 
 images:
