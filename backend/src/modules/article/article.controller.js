@@ -62,6 +62,24 @@ const updateArticle = async (req, res, next) => {
   }
 };
 
+const setArchived = async (req, res, next) => {
+  try {
+    const { archived } = req.body;
+    const article = await articleService.setArchived(req.params.uuid, archived);
+    // Distinct actions rather than one "article.archive" with a payload, so the
+    // activity log reads as a sentence without anyone decoding a detail field.
+    logAudit(archived ? "article.archive" : "article.restore", {
+      actorUuid: req.user.uuid,
+      actorEmail: req.user.email,
+      ip: req.ip,
+      detail: article.title,
+    });
+    return sendSuccess(res, 200, archived ? "Article archived" : "Article restored", article);
+  } catch (err) {
+    next(err);
+  }
+};
+
 const deleteArticle = async (req, res, next) => {
   try {
     await articleService.deleteArticleByUuid(req.params.uuid);
@@ -83,5 +101,6 @@ module.exports = {
   getRelated,
   createArticle,
   updateArticleByUuid: updateArticle,
+  setArchived,
   deleteArticleByUuid: deleteArticle,
 };

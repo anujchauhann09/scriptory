@@ -8,6 +8,7 @@ const { validate, validated } = require("../../middleware/validate.middleware");
 const {
   createArticleSchema,
   updateArticleSchema,
+  archiveArticleSchema,
   listArticlesSchema,
   slugParamSchema,
   uuidParamSchema,
@@ -61,6 +62,18 @@ router.put(
   validate(uuidParamSchema, "params"),
   validate(updateArticleSchema),
   articleController.updateArticleByUuid
+);
+// Retiring an article is a state change on one field, not a replacement of the
+// resource, and it is kept off the update route so a routine editor save can
+// never flip it by accident.
+router.patch(
+  "/:uuid/archive",
+  authMiddleware,
+  adminMiddleware,
+  limits.write,
+  validate(uuidParamSchema, "params"),
+  validate(archiveArticleSchema),
+  articleController.setArchived
 );
 router.delete(
   "/:uuid",

@@ -11,6 +11,7 @@ const MEDIA_MIMES = {
   "image/avif": [".avif"],
   "image/gif": [".gif"],
   "video/mp4": [".mp4"],
+  "video/webm": [".webm"],
 };
 
 const PROFILES = {
@@ -20,10 +21,24 @@ const PROFILES = {
     namespace: () => "images/covers",
     fieldName: "image",
   },
+  /**
+   * Inline article media: images, GIFs, and WebM used as a GIF replacement.
+   *
+   * WebM sits here rather than under `video` because it is uploaded and placed
+   * the way a GIF is — a short silent loop inside the prose — not the way a
+   * video is, with controls and a poster frame. It shares the GIF namespace for
+   * the same reason: what matters for storage is that these are animations, not
+   * which container encodes them.
+   *
+   * 10MB rather than the 5MB the other image profiles use, because an animation
+   * is simply a bigger object than a still. A WebM loop is far smaller than the
+   * equivalent GIF, but both run well past what a JPEG needs.
+   */
   inline: {
-    maxBytes: 5 * 1024 * 1024,
-    allowedMimes: ["image/jpeg", "image/png", "image/webp", "image/avif", "image/gif"],
-    namespace: (file) => (file.mimetype === "image/gif" ? "gifs/inline" : "images/inline"),
+    maxBytes: 10 * 1024 * 1024,
+    allowedMimes: ["image/jpeg", "image/png", "image/webp", "image/avif", "image/gif", "video/webm"],
+    namespace: (file) =>
+      file.mimetype === "image/gif" || file.mimetype === "video/webm" ? "gifs/inline" : "images/inline",
     fieldName: "image",
   },
   avatar: {
@@ -182,7 +197,7 @@ const imageFilter = (kind) => (req, file, cb) => {
           ? "Only JPEG, PNG, WebP or AVIF images are accepted"
           : kind === "video"
           ? "Only MP4 videos are accepted"
-          : "Only JPEG, PNG, WebP, AVIF or GIF images are accepted"
+          : "Only JPEG, PNG, WebP, AVIF, GIF or WebM files are accepted"
     );
     err.statusCode = 400;
     return cb(err);

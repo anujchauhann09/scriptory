@@ -197,24 +197,30 @@ export const WriteArticle = () => {
   );
 
   const handleInlineUpload = async (file: File) => {
+    // Decided here, from the picked file, rather than downstream from the URL:
+    // uploads are served through /api/media/<base64 token>, so the stored
+    // extension never appears in the src a reader (or this editor) sees.
+    const isAnimation = file.type === 'video/webm';
     setInlineUploading(true);
     try {
       const result = await uploadApi.inline(file);
-      const alt = window.prompt('Alt text for this image')?.trim() || 'Article image';
+      const label = isAnimation ? 'animation' : 'image';
+      const alt = window.prompt(`Alt text for this ${label}`)?.trim() || `Article ${label}`;
       const caption = window.prompt('Caption (optional)')?.trim() || '';
       const attrs = [
         `src="${result.url}"`,
         `alt="${quoteAttr(alt)}"`,
         caption ? `caption="${quoteAttr(caption)}"` : '',
+        `publicId="${quoteAttr(result.publicId)}"`,
       ].filter(Boolean).join(' ');
       applyFormat((ta) => insertAtCursor(ta, `
 
-:::image ${attrs}
+:::${isAnimation ? 'animation' : 'image'} ${attrs}
 :::
 
 `));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Image upload failed');
+      setError(err instanceof Error ? err.message : `${isAnimation ? 'Animation' : 'Image'} upload failed`);
     } finally {
       setInlineUploading(false);
     }
@@ -582,7 +588,7 @@ export const WriteArticle = () => {
                     <ExternalLink size={15} />
                   </ToolBtn>
                   <ToolBtn
-                    title="Upload image into article"
+                    title="Upload image, GIF or WebM animation into article"
                     onClick={() => inlineInputRef.current?.click()}
                     loading={inlineUploading}
                   >
@@ -591,7 +597,7 @@ export const WriteArticle = () => {
                   <input
                     ref={inlineInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/*,video/webm,.webm"
                     className="hidden"
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       const file = e.target.files?.[0];

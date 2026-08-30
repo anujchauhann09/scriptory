@@ -20,9 +20,13 @@ const escapeXml = (str = "") =>
     ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[c])
   );
 
+// Archived posts are dropped from both feeds. The sitemap is the stronger case
+// of the two: leaving a retired article in it asks search engines to keep
+// ranking it, which is the opposite of what archiving is for. The URL itself
+// stays reachable for anyone who already has the link.
 const publishedArticles = (limit) =>
   prisma.article.findMany({
-    where: { published: true },
+    where: { published: true, archivedAt: null },
     orderBy: { createdAt: "desc" },
     take: limit,
     select: { slug: true, title: true, excerpt: true, createdAt: true, updatedAt: true },

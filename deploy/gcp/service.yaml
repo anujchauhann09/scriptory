@@ -145,7 +145,7 @@ spec:
               value: "9000"
 
             - name: EMBEDDING_MODEL
-              value: "text-embedding-004"
+              value: "gemini-embedding-2"
 
             - name: SMTP_HOST
               value: "smtp.gmail.com"

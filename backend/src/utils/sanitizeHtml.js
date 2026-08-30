@@ -39,12 +39,24 @@ const ALLOWED_TAGS = [
 const ALLOWED_ATTRIBUTES = {
   a: ["href", "title", "target", "rel", "name", "id"],
   img: ["src", "alt", "title", "width", "height", "loading", "decoding"],
-  video: ["src", "title", "controls", "preload", "poster", "width", "height"],
+  // autoplay/loop/muted/playsinline are what make a WebM behave like the GIF it
+  // replaces. They are inert markup — none of them can run script — and muted
+  // is load-bearing rather than cosmetic: browsers block autoplay outright
+  // without it, so dropping it would leave the animation frozen on frame one.
+  video: [
+    "src", "title", "controls", "preload", "poster", "width", "height",
+    "autoplay", "loop", "muted", "playsinline",
+  ],
   source: ["src", "type"],
   code: ["class"],
   pre: ["class"],
   span: ["class"],
   div: ["class"],
+  // Article media wraps itself in <figure class="article-animation"> /
+  // "article-video", and that class is the only thing the stylesheet has to
+  // hook onto. Without it here the tag survives sanitising but arrives
+  // unstyled, so an animation renders at intrinsic size with no rounding.
+  figure: ["class"],
   p: ["class"],
   details: ["open", "class"],
   summary: ["class"],

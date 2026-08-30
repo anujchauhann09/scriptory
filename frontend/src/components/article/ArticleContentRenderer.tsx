@@ -25,6 +25,32 @@ const ImageRenderer = ({ block }: { block: Extract<ArticleBlock, { type: 'image'
   </figure>
 );
 
+/**
+ * A WebM standing in for a GIF: it plays itself, forever, silently, and offers
+ * no controls. Rendered in a plain <figure> like ImageRenderer rather than the
+ * article-video frame, so it sits in the prose the way a still image does.
+ *
+ * `muted` is not optional — an unmuted video is not allowed to autoplay, so
+ * without it the animation would sit frozen on its first frame.
+ */
+const AnimationRenderer = ({ block }: { block: Extract<ArticleBlock, { type: 'animation' }> }) => (
+  <figure className="article-animation">
+    <video
+      autoPlay
+      loop
+      muted
+      playsInline
+      preload="metadata"
+      title={block.alt}
+      width={block.width}
+      height={block.height}
+    >
+      <source src={block.src} type="video/webm" />
+    </video>
+    {block.caption && <figcaption>{block.caption}</figcaption>}
+  </figure>
+);
+
 const VideoRenderer = ({ block }: { block: Extract<ArticleBlock, { type: 'video' }> }) => (
   <figure className="article-video">
     <div className="article-video-frame">
@@ -84,6 +110,7 @@ const RichLinkRenderer = ({ block }: { block: Extract<ArticleBlock, { type: 'ric
 const renderers = {
   markdown: MarkdownRenderer,
   image: ImageRenderer,
+  animation: AnimationRenderer,
   video: VideoRenderer,
   videoFile: VideoFileRenderer,
   code: CodeRenderer,

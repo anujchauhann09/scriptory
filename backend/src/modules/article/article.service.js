@@ -38,6 +38,9 @@ const ARTICLE_LIST_SELECT = {
   excerpt: true,
   coverImage: true,
   published: true,
+  // Emitted on every card and detail response so a client can render the
+  // "Archived" state without a second request.
+  archivedAt: true,
   readingTime: true,
   createdAt: true,
   updatedAt: true,
@@ -109,6 +112,22 @@ const visibilityFilter = (viewer) =>
 
 const canSeeUnpublished = (viewer) => Boolean(viewer && viewer.role === "ADMIN");
 
+/**
+ * Discovery filter: what belongs in a listing, feed or recommendation.
+ *
+ * Kept deliberately separate from `visibilityFilter` above, because archiving
+ * and unpublishing restrict different things. An unpublished draft must not be
+ * *readable*; an archived article stays fully readable — same URL, same
+ * comments, same view count — and is only withheld from the places the site
+ * puts articles in front of a reader who did not ask for one by name.
+ *
+ * Folding this into visibilityFilter would silently 404 every archived post and
+ * collapse the feature back into "unpublish with extra steps", so the two rules
+ * are applied by different callers on purpose.
+ */
+const NOT_ARCHIVED = { archivedAt: null };
+const ONLY_ARCHIVED = { NOT: { archivedAt: null } };
+
 // Find-or-create a series by title; returns its id (or null to detach).
 const upsertSeries = async (client, title) => {
   const name = (title || "").trim();
@@ -162,11 +181,25 @@ const upsertTags = async (client, tags) => {
   return ids;
 };
 
-const listArticles = async ({ page, limit, tag, search, published, category, uncategorized }, viewer) => {
+const listArticles = async (
+  { page, limit, tag, search, published, category, uncategorized, archived },
+  viewer
+) => {
   const adminView = canSeeUnpublished(viewer);
   // A non-admin never sees anything but published posts, whatever they asked
   // for; an admin may filter, and defaults to everything.
   const publishedFilter = adminView ? published : true;
+
+  /**
+   * Archived posts are excluded unless an admin explicitly asks for them, and
+   * `?archived=true` then returns *only* archived ones.
+   *
+   * The default is exclusion rather than "everything" — unlike `published`,
+   * which an admin sees unfiltered by default — because the point of archiving
+   * is to get a post out of the way. An admin browsing the archive should see
+   * what a reader sees; retrieving the retired ones is the deliberate act.
+   */
+  const archivedOnly = adminView && archived === true;
 
   if (search && search.trim()) {
     return searchArticles({
@@ -177,12 +210,14 @@ const listArticles = async ({ page, limit, tag, search, published, category, unc
       published: publishedFilter,
       category,
       uncategorized,
+      archivedOnly,
     });
   }
 
   const skip = (page - 1) * limit;
   const where = {
     ...(publishedFilter === undefined ? {} : { published: publishedFilter }),
+    ...(archivedOnly ? ONLY_ARCHIVED : NOT_ARCHIVED),
     ...(tag && { tags: { some: { tag: { name: normaliseTag(tag) } } } }),
     ...categoryWhere({ category, uncategorized }),
   };
@@ -214,7 +249,9 @@ const listArticles = async ({ page, limit, tag, search, published, category, unc
  * `websearch_to_tsquery` additionally parses the term as a search expression
  * rather than as SQL, so malformed input yields no matches instead of an error.
  */
-const searchArticles = async ({ page, limit, tag, search, published, category, uncategorized }) => {
+const searchArticles = async ({
+  page, limit, tag, search, published, category, uncategorized, archivedOnly,
+}) => {
   const skip = (page - 1) * limit;
 
   const tsv = Prisma.sql`to_tsvector('english', coalesce(a.title,'') || ' ' || coalesce(a.excerpt,'') || ' ' || coalesce(a.content,''))`;
@@ -234,7 +271,13 @@ const searchArticles = async ({ page, limit, tag, search, published, category, u
   }
   const publishedFilter =
     published === undefined ? Prisma.empty : Prisma.sql`a.published = ${published} AND`;
-  const where = Prisma.sql`${publishedFilter} ${tsv} @@ ${query} ${tagFilter} ${categoryFilter}`;
+  // Mirrors the plain-listing rule: search must not surface a post that the
+  // listing next to it hides, or archiving would leak straight back through the
+  // search box.
+  const archivedFilter = archivedOnly
+    ? Prisma.sql`a."archivedAt" IS NOT NULL AND`
+    : Prisma.sql`a."archivedAt" IS NULL AND`;
+  const where = Prisma.sql`${publishedFilter} ${archivedFilter} ${tsv} @@ ${query} ${tagFilter} ${categoryFilter}`;
 
   const [ranked, countRows] = await Promise.all([
     prisma.$queryRaw(Prisma.sql`
@@ -460,8 +503,11 @@ const updateArticleByUuid = async (uuid, input) => {
  * memory, which means pulling a few hundred multi-kilobyte JSON columns out of
  * the database. Doing that on every article view is the single most expensive
  * read on the site, and the candidate set barely changes between requests — so
- * it is memoised briefly. The cache holds published articles only and is keyed
- * by content, never by viewer.
+ * it is memoised briefly. The cache holds live, unarchived articles only and is
+ * keyed by content, never by viewer.
+ *
+ * Recommending an archived post is exactly what archiving is meant to stop: it
+ * is the site actively pushing retired material at a reader.
  */
 const RELATED_CACHE_TTL_MS = Number(process.env.RELATED_CACHE_TTL_MS) || 5 * 60 * 1000;
 const RELATED_CANDIDATE_LIMIT = 200;
@@ -469,7 +515,7 @@ const RELATED_CANDIDATE_LIMIT = 200;
 const loadRelatedCandidates = () =>
   memo.remember("related:candidates", RELATED_CACHE_TTL_MS, () =>
     prisma.article.findMany({
-      where: { published: true, NOT: { embedding: { equals: Prisma.DbNull } } },
+      where: { published: true, ...NOT_ARCHIVED, NOT: { embedding: { equals: Prisma.DbNull } } },
       select: { id: true, slug: true, embedding: true, ...ARTICLE_LIST_SELECT },
       orderBy: { createdAt: "desc" },
       take: RELATED_CANDIDATE_LIMIT,
@@ -498,12 +544,51 @@ const getRelated = async (slug, viewer, limit = 3) => {
   const tag = article.tags[0]?.tag?.name;
   if (!tag) return [];
   const byTag = await prisma.article.findMany({
-    where: { published: true, slug: { not: slug }, tags: { some: { tag: { name: tag } } } },
+    where: {
+      published: true,
+      ...NOT_ARCHIVED,
+      slug: { not: slug },
+      tags: { some: { tag: { name: tag } } },
+    },
     orderBy: { createdAt: "desc" },
     take: limit,
     select: ARTICLE_LIST_SELECT,
   });
   return byTag.map(formatArticle);
+};
+
+/**
+ * Archive or restore an article.
+ *
+ * Its own operation rather than a field on the update payload, for two reasons.
+ * The editor PUTs the whole article on every save, so an `archived` key in that
+ * body is one stale form value away from silently un-retiring a post; and
+ * retiring something readers can see deserves its own audit action, not an
+ * entry indistinguishable from a typo fix.
+ *
+ * Idempotent: archiving an already-archived article keeps the original
+ * timestamp, so "when was this retired" survives a double click.
+ */
+const setArchived = async (uuid, archived) => {
+  const existing = await prisma.article.findUnique({
+    where: { uuid },
+    select: { id: true, archivedAt: true },
+  });
+  if (!existing) throw notFound();
+
+  const alreadyInState = archived === Boolean(existing.archivedAt);
+  const article = alreadyInState
+    ? await prisma.article.findUnique({ where: { uuid }, select: ARTICLE_DETAIL_SELECT })
+    : await prisma.article.update({
+        where: { uuid },
+        data: { archivedAt: archived ? new Date() : null },
+        select: ARTICLE_DETAIL_SELECT,
+      });
+
+  // The article moves in and out of every cached listing, feed and
+  // related-posts set, so all of them are now stale.
+  if (!alreadyInState) invalidatePublicCaches();
+  return formatArticle(article);
 };
 
 const deleteArticleByUuid = async (uuid) => {
@@ -597,6 +682,7 @@ module.exports = {
   getRelated,
   createArticle,
   updateArticleByUuid,
+  setArchived,
   deleteArticleByUuid,
   resolveVisibleArticle,
   invalidatePublicCaches,

@@ -10,6 +10,8 @@ export type ArticleContentSource = {
 export type ArticleBlock =
   | { type: 'markdown'; markdown: string }
   | { type: 'image'; src: string; alt: string; caption?: string; publicId?: string; width?: number; height?: number }
+  /** A silent looping WebM, used where a GIF would be. Same shape as `image`. */
+  | { type: 'animation'; src: string; alt: string; caption?: string; publicId?: string; width?: number; height?: number }
   | { type: 'video'; provider: 'youtube' | 'vimeo'; id: string; title?: string; caption?: string }
   | { type: 'videoFile'; src: string; title?: string; caption?: string; publicId?: string; poster?: string }
   | { type: 'code'; language?: string; code: string; filename?: string }
@@ -112,6 +114,15 @@ function parseDirective(name: string, attrs: Attrs, body: string): ArticleBlock 
   if (name === 'image' && attrs.src && attrs.alt) {
     return { type: 'image', src: attrs.src, alt: attrs.alt, ...(attrs.caption ? { caption: attrs.caption } : {}) };
   }
+  if (name === 'animation' && attrs.src && attrs.alt) {
+    return {
+      type: 'animation',
+      src: attrs.src,
+      alt: attrs.alt,
+      ...(attrs.caption ? { caption: attrs.caption } : {}),
+      ...(attrs.publicId ? { publicId: attrs.publicId } : {}),
+    };
+  }
   if (name === 'video' && (attrs.provider === 'youtube' || attrs.provider === 'vimeo') && attrs.id) {
     return {
       type: 'video',
@@ -191,6 +202,7 @@ export function contentSourceToEditorText(source: ArticleContentSource): string 
   return source.blocks.map((block) => {
     if (block.type === 'markdown') return block.markdown;
     if (block.type === 'image') return `:::image ${attrsToText({ src: block.src, alt: block.alt, caption: block.caption || '' })}\n:::`;
+    if (block.type === 'animation') return `:::animation ${attrsToText({ src: block.src, alt: block.alt, caption: block.caption || '', publicId: block.publicId || '' })}\n:::`;
     if (block.type === 'video') return `:::video ${attrsToText({ provider: block.provider, id: block.id, title: block.title || '', caption: block.caption || '' })}\n:::`;
     if (block.type === 'videoFile') return `:::video-file ${attrsToText({ src: block.src, title: block.title || '', caption: block.caption || '', publicId: block.publicId || '', poster: block.poster || '' })}\n:::`;
     if (block.type === 'richLink') return `:::rich-link ${attrsToText({ url: block.url, title: block.title || '', description: block.description || '', image: block.image || '' })}\n:::`;
@@ -204,7 +216,10 @@ export function contentSourceToEditorText(source: ArticleContentSource): string 
 
 export function contentSourceToHtml(source: ArticleContentSource): string {
   const html = source.blocks.map((block) => blockToHtml(block)).join('\n');
-  return DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'rel', 'open', 'controls', 'preload', 'poster'], ADD_TAGS: ['details', 'summary', 'video', 'source'] }) as unknown as string;
+  return DOMPurify.sanitize(html, {
+    ADD_ATTR: ['target', 'rel', 'open', 'controls', 'preload', 'poster', 'autoplay', 'loop', 'muted', 'playsinline'],
+    ADD_TAGS: ['details', 'summary', 'video', 'source'],
+  }) as unknown as string;
 }
 
 function blockToHtml(block: ArticleBlock): string {
@@ -212,6 +227,15 @@ function blockToHtml(block: ArticleBlock): string {
   if (block.type === 'image') {
     const img = `<img src="${escapeAttr(block.src)}" alt="${escapeAttr(block.alt)}" loading="lazy" decoding="async"${block.width ? ` width="${block.width}"` : ''}${block.height ? ` height="${block.height}"` : ''}>`;
     return `<figure>${img}${block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : ''}</figure>`;
+  }
+  if (block.type === 'animation') {
+    // autoplay+loop+muted+playsinline is the GIF contract: it starts on its own,
+    // never stops, makes no sound, and does not hijack the screen on iOS.
+    // `muted` is required, not decorative — browsers refuse to autoplay without
+    // it. No `controls`, because a GIF has none.
+    const dims = `${block.width ? ` width="${block.width}"` : ''}${block.height ? ` height="${block.height}"` : ''}`;
+    const video = `<video autoplay loop muted playsinline preload="metadata" title="${escapeAttr(block.alt)}"${dims}><source src="${escapeAttr(block.src)}" type="video/webm"></video>`;
+    return `<figure class="article-animation">${video}${block.caption ? `<figcaption>${escapeHtml(block.caption)}</figcaption>` : ''}</figure>`;
   }
   if (block.type === 'video') {
     const label = block.title || `${block.provider} video`;

@@ -161,6 +161,14 @@ export interface ApiArticle {
   contentVersion?: number;
   coverImage?: string;
   published: boolean;
+  /**
+   * ISO timestamp when the article was retired from discovery, or null.
+   *
+   * Always sent, so `archivedAt !== null` is the whole check — an archived
+   * article is still fully readable here, it just no longer appears in
+   * listings, search, the feed or related posts.
+   */
+  archivedAt?: string | null;
   readingTime?: number;
   createdAt: string;
   updatedAt: string;
@@ -223,6 +231,12 @@ export const articlesApi = {
     request<ApiArticle>('/articles', { method: 'POST', body: JSON.stringify(data) }),
   update: (uuid: string, data: Partial<ArticlePayload>) =>
     request<ApiArticle>(`/articles/${uuid}`, { method: 'PUT', body: JSON.stringify(data) }),
+  /** Retire an article from discovery, or put it back. Its URL keeps working either way. */
+  setArchived: (uuid: string, archived: boolean) =>
+    request<ApiArticle>(`/articles/${uuid}/archive`, {
+      method: 'PATCH',
+      body: JSON.stringify({ archived }),
+    }),
   delete: (uuid: string) =>
     request<null>(`/articles/${uuid}`, { method: 'DELETE' }),
   incrementViewBySlug: (slug: string) =>
@@ -329,22 +343,48 @@ export interface UploadResult { url: string; publicId: string }
  *  instead of after a full upload. */
 const MAX_UPLOAD_BYTES: Record<string, number> = {
   '/upload/cover': 5 * 1024 * 1024,
-  '/upload/inline': 5 * 1024 * 1024,
+  // Inline media carries animations (GIF, WebM), which are simply larger
+  // objects than stills. Covers stay at 5MB: they load on every card in the
+  // archive grid, so their weight is paid on listing pages too.
+  '/upload/inline': 10 * 1024 * 1024,
   '/upload/avatar': 2 * 1024 * 1024,
   '/upload/video': 50 * 1024 * 1024,
 };
 
-const ACCEPTED_IMAGE_TYPES = /^image\/(jpeg|png|webp|avif|gif)$/;
-const ACCEPTED_VIDEO_TYPES = /^video\/mp4$/;
+/**
+ * Accepted types per endpoint, mirroring the server's own profiles.
+ *
+ * Split by endpoint rather than shared, because WebM belongs to exactly one of
+ * them: it is allowed inline as a GIF replacement, and must stay out of covers
+ * and avatars, which are rendered in <img> tags that cannot play it.
+ */
+const ACCEPTED_TYPES: Record<string, { pattern: RegExp; message: string }> = {
+  '/upload/cover': {
+    pattern: /^image\/(jpeg|png|webp|avif)$/,
+    message: 'Please choose a JPEG, PNG, WebP or AVIF image.',
+  },
+  '/upload/inline': {
+    pattern: /^(image\/(jpeg|png|webp|avif|gif)|video\/webm)$/,
+    message: 'Please choose a JPEG, PNG, WebP, AVIF or GIF image, or a WebM animation.',
+  },
+  '/upload/avatar': {
+    pattern: /^image\/(jpeg|png|webp)$/,
+    message: 'Please choose a JPEG, PNG or WebP image.',
+  },
+  '/upload/video': {
+    pattern: /^video\/mp4$/,
+    message: 'Please choose an MP4 video.',
+  },
+};
 
 async function uploadFile(endpoint: string, file: File, fieldName = 'image'): Promise<UploadResult> {
-  const isVideo = endpoint === '/upload/video';
-  if (isVideo ? !ACCEPTED_VIDEO_TYPES.test(file.type) : !ACCEPTED_IMAGE_TYPES.test(file.type)) {
-    throw new Error(isVideo ? 'Please choose an MP4 video.' : 'Please choose a JPEG, PNG, WebP, AVIF or GIF image.');
+  const accepted = ACCEPTED_TYPES[endpoint];
+  if (accepted && !accepted.pattern.test(file.type)) {
+    throw new Error(accepted.message);
   }
   const limit = MAX_UPLOAD_BYTES[endpoint];
   if (limit && file.size > limit) {
-    throw new Error(`That ${isVideo ? 'video' : 'image'} is too large. The maximum is ${Math.round(limit / 1024 / 1024)}MB.`);
+    throw new Error(`That file is too large. The maximum is ${Math.round(limit / 1024 / 1024)}MB.`);
   }
 
   const form = new FormData();
@@ -527,7 +567,7 @@ export const auditApi = {
 
 export interface AnalyticsOverview {
   totals: {
-    articles: number; published: number; drafts: number;
+    articles: number; published: number; drafts: number; archived: number;
     views: number; likes: number; comments: number;
     subscribers: number; activeSubscribers: number;
   };

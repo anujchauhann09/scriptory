@@ -138,6 +138,22 @@ model Article {
   coverImage  String?
   published   Boolean        @default(true)
   publishAt   DateTime? // when set in the future, a cron auto-publishes it
+
+  /// Retired from discovery, still readable at its URL.
+  ///
+  /// Deliberately not the same thing as `published: false`. A draft is work
+  /// that was never released; an archived article *was* released and stays
+  /// released — its URL, comments, likes and view count all keep working, so
+  /// every inbound link, bookmark and search result a reader already has still
+  /// resolves. What it gives up is discovery: the archive listing, search, the
+  /// RSS feed, the sitemap, related posts and the newsletter digest all skip
+  /// it. Keeping the link alive is the entire difference between archiving and
+  /// unpublishing, and the reason this is a separate column rather than a
+  /// second meaning bolted onto `published`.
+  ///
+  /// A timestamp rather than a boolean: "when was this retired" is worth
+  /// recording and costs nothing, and null is an unambiguous "not archived".
+  archivedAt  DateTime?
   embedding   Json? // content-similarity vector for "related posts"
   readingTime Int?
   createdAt   DateTime       @default(now())
@@ -165,6 +181,9 @@ model Article {
   @@index([authorId])
   @@index([createdAt])
   @@index([published])
+  // Every listing, feed and recommendation now carries an `archivedAt IS NULL`
+  // predicate, so it is worth an index of its own.
+  @@index([archivedAt])
   @@index([authorId, createdAt])
   @@index([seriesId])
   @@index([categoryId])

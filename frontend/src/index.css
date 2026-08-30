@@ -372,6 +372,23 @@
   }
   .prose .mermaid-diagram svg { max-width: 100%; height: auto; }
 
+  /*
+    A WebM standing in for a GIF, so it is styled from .prose img rather than
+    .article-video: full width, natural height, no fixed 16/9 frame. An
+    animation is whatever shape it was authored at, exactly like the still it
+    replaces — boxing it into a video frame would letterbox every square loop.
+  */
+  .prose .article-animation {
+    margin: 1.75rem 0;
+  }
+  .prose .article-animation video {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 0.75rem;
+    object-fit: contain;
+  }
+
   .prose .article-video {
     margin: 1.75rem 0;
   }

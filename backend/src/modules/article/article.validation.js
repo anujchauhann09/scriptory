@@ -96,6 +96,14 @@ const listArticlesSchema = Joi.object({
   // an existing back catalogue. A separate flag rather than a reserved slug so
   // it cannot collide with a real category added later.
   uncategorized: Joi.boolean().optional(),
+  // Admins only, and the service ignores it for everyone else. Omitted means
+  // "hide archived"; true means "show me only the archived ones".
+  archived: Joi.boolean().optional(),
+});
+
+/** Body of the archive/restore endpoint. */
+const archiveArticleSchema = Joi.object({
+  archived: Joi.boolean().required(),
 });
 
 /** Path parameters, validated so a malformed identifier never reaches a query. */
@@ -110,6 +118,7 @@ const uuidParamSchema = Joi.object({
 module.exports = {
   createArticleSchema,
   updateArticleSchema,
+  archiveArticleSchema,
   listArticlesSchema,
   slugParamSchema,
   uuidParamSchema,

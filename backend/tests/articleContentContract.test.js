@@ -23,6 +23,35 @@ test("normalises a valid hybrid article source", () => {
   assert.match(sourceToPlainText(source), /Prefer boring queues/);
 });
 
+test("normalises animation blocks and requires alt text", () => {
+  const source = normaliseArticleContentSource({
+    version: 1,
+    format: "hybrid",
+    blocks: [
+      {
+        type: "animation",
+        src: "https://api.example.com/api/media/anim-token",
+        alt: "Rebalance animation",
+        caption: "Partitions moving between consumers",
+      },
+    ],
+  });
+
+  assert.equal(source.blocks[0].type, "animation");
+  assert.equal(source.blocks[0].alt, "Rebalance animation");
+  // Indexed for search the same way an image's alt text is.
+  assert.match(sourceToPlainText(source), /Rebalance animation/);
+
+  assert.throws(
+    () => normaliseArticleContentSource({
+      version: 1,
+      format: "hybrid",
+      blocks: [{ type: "animation", src: "https://api.example.com/api/media/anim-token" }],
+    }),
+    /Animation blocks require alt text/
+  );
+});
+
 test("rejects unsafe or unknown structured content", () => {
   assert.throws(
     () => normaliseArticleContentSource({ version: 1, format: "hybrid", blocks: [{ type: "video", provider: "twitch", id: "abc123" }] }),

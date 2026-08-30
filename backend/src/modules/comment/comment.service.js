@@ -40,12 +40,27 @@ const getComments = async (articleIdentifier, viewer, { page = 1, limit = 50 } =
 const createComment = async (userUuid, articleIdentifier, content, viewer) => {
   const [user, article] = await Promise.all([
     prisma.user.findUnique({ where: { uuid: userUuid }, select: { id: true } }),
-    resolveVisibleArticle(articleIdentifier, viewer),
+    resolveVisibleArticle(articleIdentifier, viewer, { id: true, archivedAt: true }),
   ]);
 
   if (!user) {
     const err = new Error("User not found");
     err.statusCode = 404;
+    throw err;
+  }
+
+  /**
+   * Archived threads are read-only.
+   *
+   * Only writing is closed — `getComments` above deliberately keeps serving the
+   * existing discussion, because retiring an article should not erase the
+   * conversation people already had on it. 409 rather than 404: the article is
+   * plainly there and readable, so pretending it is missing would just look
+   * like a bug to the reader staring at it.
+   */
+  if (article.archivedAt) {
+    const err = new Error("This article has been archived — comments are closed");
+    err.statusCode = 409;
     throw err;
   }
 

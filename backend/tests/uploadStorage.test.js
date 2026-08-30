@@ -153,6 +153,61 @@ test("invalid MIME types and extensions are rejected before provider upload", as
   assert.equal(mock.uploads.length, 0);
 });
 
+test("inline accepts WebM animations, and only inline does", async () => {
+  const admin = await createUser({ role: "ADMIN" });
+  const mock = provider();
+  storageService.setStorageProviderForTest(mock);
+
+  const inline = await request(app)
+    .post("/api/upload/inline")
+    .set("Origin", ORIGIN)
+    .set("Cookie", admin.cookie)
+    .attach("image", Buffer.from("webm-data"), { filename: "loop.webm", contentType: "video/webm" });
+
+  assert.equal(inline.status, 200, JSON.stringify(inline.body));
+  assert.equal(mock.uploads[0].kind, "inline");
+  assert.equal(mock.uploads[0].file.mimetype, "video/webm");
+
+  // A cover is rendered in an <img>, which cannot play a WebM. Accepting one
+  // here would store a file that silently fails to display on every card.
+  const cover = await request(app)
+    .post("/api/upload/cover")
+    .set("Origin", ORIGIN)
+    .set("Cookie", admin.cookie)
+    .attach("image", Buffer.from("webm-data"), { filename: "cover.webm", contentType: "video/webm" });
+  assert.equal(cover.status, 400);
+
+  // A mismatched extension must not slip through on the MIME type alone.
+  const wrongExt = await request(app)
+    .post("/api/upload/inline")
+    .set("Origin", ORIGIN)
+    .set("Cookie", admin.cookie)
+    .attach("image", Buffer.from("webm-data"), { filename: "loop.mp4", contentType: "video/webm" });
+  assert.equal(wrongExt.status, 400);
+
+  assert.equal(mock.uploads.length, 1);
+});
+
+test("inline uploads are capped at 10MB", async () => {
+  const admin = await createUser({ role: "ADMIN" });
+  const mock = provider();
+  storageService.setStorageProviderForTest(mock);
+
+  const justUnder = await request(app)
+    .post("/api/upload/inline")
+    .set("Origin", ORIGIN)
+    .set("Cookie", admin.cookie)
+    .attach("image", Buffer.alloc(9 * 1024 * 1024, 1), { filename: "big.webm", contentType: "video/webm" });
+  assert.equal(justUnder.status, 200, "9MB should be accepted after the 5MB -> 10MB raise");
+
+  const over = await request(app)
+    .post("/api/upload/inline")
+    .set("Origin", ORIGIN)
+    .set("Cookie", admin.cookie)
+    .attach("image", Buffer.alloc(10 * 1024 * 1024 + 1, 1), { filename: "huge.webm", contentType: "video/webm" });
+  assert.equal(over.status, 413);
+});
+
 test("upload size limits are enforced", async () => {
   const user = await createUser({ role: "USER" });
   storageService.setStorageProviderForTest(provider());

@@ -6,7 +6,8 @@ import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { articlesApi, tagsApi, categoriesApi, type ApiArticle, type ApiTag, type ApiCategory } from '../lib/api';
 import { getCache, setCache } from '../lib/cache';
-import { Search } from 'lucide-react';
+import { Search, Archive } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { ArticleCard } from '../components/ui/ArticleCard';
 import { ArticleCardSkeleton } from '../components/ui/Skeleton';
 import { AnimatePresence } from 'motion/react';
@@ -14,6 +15,7 @@ import { Button } from '../components/ui/Button';
 
 export const Articles = () => {
   const [params] = useSearchParams();
+  const { isAdmin } = useAuth();
   const [articles, setArticles] = useState<ApiArticle[]>([]);
   const [tags, setTags] = useState<ApiTag[]>([]);
   const [categories, setCategories] = useState<ApiCategory[]>([]);
@@ -21,6 +23,15 @@ export const Articles = () => {
   const [debouncedSearch, setDebouncedSearch] = useState(params.get('search') || '');
   const [selectedTag, setSelectedTag] = useState<string | null>(params.get('tag'));
   const [selectedCategory, setSelectedCategory] = useState<string | null>(params.get('category'));
+  /**
+   * Admin-only view of retired articles.
+   *
+   * Not a nicety: archiving removes a post from every listing on the site, so
+   * without a way back the action would be one-way in practice and the only
+   * route to Restore would be remembering the URL. The server ignores the
+   * parameter for non-admins regardless of what this holds.
+   */
+  const [showArchived, setShowArchived] = useState(params.get('archived') === 'true');
 
   // Sync filters from the URL (e.g. command-palette jumps, deep links).
   useEffect(() => {
@@ -39,7 +50,7 @@ export const Articles = () => {
   }, [searchQuery]);
 
   const fetchArticles = useCallback(async (signal?: AbortSignal) => {
-    const cacheKey = `articles:${page}:${debouncedSearch}:${selectedTag ?? ''}:${selectedCategory ?? ''}`;
+    const cacheKey = `articles:${page}:${debouncedSearch}:${selectedTag ?? ''}:${selectedCategory ?? ''}:${showArchived ? 'archived' : ''}`;
     const cached = getCache<{ articles: ApiArticle[]; totalPages: number }>(cacheKey);
 
     // seed instantly from cache (no skeleton), then revalidate in the background
@@ -56,6 +67,7 @@ export const Articles = () => {
       if (debouncedSearch) params.search = debouncedSearch;
       if (selectedTag) params.tag = selectedTag;
       if (selectedCategory) params.category = selectedCategory;
+      if (showArchived) params.archived = 'true';
       const res = await articlesApi.list(params);
       if (signal?.aborted) return;
       setArticles(res.articles);
@@ -67,7 +79,7 @@ export const Articles = () => {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [page, debouncedSearch, selectedTag, selectedCategory]);
+  }, [page, debouncedSearch, selectedTag, selectedCategory, showArchived]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -82,7 +94,11 @@ export const Articles = () => {
     categoriesApi.list().then(setCategories).catch(console.error);
   }, []);
 
-  useEffect(() => { setPage(1); }, [debouncedSearch, selectedTag, selectedCategory]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, selectedTag, selectedCategory, showArchived]);
+
+  // Reset when signing out mid-session, so a stale toggle cannot leave a
+  // non-admin looking at an empty listing with no obvious way to fix it.
+  useEffect(() => { if (!isAdmin) setShowArchived(false); }, [isAdmin]);
 
   return (
     <Section>
@@ -103,6 +119,29 @@ export const Articles = () => {
             />
           </div>
         </div>
+
+        {/*
+          Admin-only, and the only route back to an archived article once it has
+          dropped out of every listing. Rendered above the filter rows because
+          it switches which set is being filtered rather than narrowing it.
+        */}
+        {isAdmin && (
+          <div className="mb-6 flex flex-wrap items-center gap-3">
+            <Badge
+              variant={showArchived ? 'brand' : 'outline'}
+              className="inline-flex cursor-pointer select-none items-center gap-1.5 px-3.5 py-1"
+              onClick={() => setShowArchived((v) => !v)}
+            >
+              <Archive className="h-3 w-3" />
+              {showArchived ? 'Viewing archived' : 'Show archived'}
+            </Badge>
+            {showArchived && (
+              <span className="text-xs text-muted-foreground">
+                Retired articles. Still readable at their URLs, hidden from readers everywhere else.
+              </span>
+            )}
+          </div>
+        )}
 
         {/*
           Categories are the site's learning structure, so they read as a

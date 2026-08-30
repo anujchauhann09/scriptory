@@ -18,7 +18,13 @@ import DOMPurify, { type Config } from 'dompurify';
  */
 const CONFIG: Config = {
   ADD_TAGS: ['details', 'summary', 'video', 'source'],
-  ADD_ATTR: ['target', 'rel', 'open', 'controls', 'preload', 'poster', 'type'],
+  // autoplay/loop/muted/playsinline let a WebM animation behave like the GIF it
+  // replaces. Stripping `muted` here would be enough on its own to freeze every
+  // animation, since browsers refuse to autoplay an unmuted video.
+  ADD_ATTR: [
+    'target', 'rel', 'open', 'controls', 'preload', 'poster', 'type',
+    'autoplay', 'loop', 'muted', 'playsinline',
+  ],
   // Inline styles are dropped: they can position an invisible overlay across the
   // page, which is a clickjacking primitive that needs no script at all.
   FORBID_ATTR: ['style', 'onerror', 'onload', 'onclick'],

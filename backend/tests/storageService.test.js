@@ -56,6 +56,24 @@ test("GCS upload creates collision-resistant names and API media URLs", async ()
   assert.equal(calls.save[0].options.metadata.metadata.originalName, "demo-file.gif");
 });
 
+test("WebM animations share the GIF namespace and keep their extension", async () => {
+  const { storage, calls } = fakeStorage();
+  const gcs = new GCSStorage({ bucketName: "bucket", apiUrl: "https://api.example.com", storage });
+
+  const uploaded = await gcs.upload({
+    kind: "inline",
+    file: image({ originalname: "loop.webm", mimetype: "video/webm", buffer: Buffer.from("webm-data") }),
+  });
+
+  // The same shelf as GIFs: for storage what matters is that both are
+  // animations, not which container encodes them.
+  assert.match(uploaded.publicId, /^gifs\/inline\/\d{4}\/\d{2}\/\d{2}\/[0-9a-f-]+\.webm$/);
+  // The object name must survive the token round-trip, or the media route
+  // cannot serve it back.
+  assert.equal(decodeObjectToken(uploaded.url.split("/").pop()), uploaded.publicId);
+  assert.equal(calls.save[0].options.metadata.contentType, "video/webm");
+});
+
 test("GCS read and delete use only validated object names", async () => {
   const { storage, calls } = fakeStorage();
   const gcs = new GCSStorage({ bucketName: "bucket", apiUrl: "https://api.example.com", storage });

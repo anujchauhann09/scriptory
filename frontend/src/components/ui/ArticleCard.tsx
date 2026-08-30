@@ -65,6 +65,17 @@ export const ArticleCard = ({ article, index }: ArticleCardProps) => {
           <span>{formattedDate}</span>
           <span className="text-brand">·</span>
           <span>{article.readingTime ?? 1} min read</span>
+          {/*
+            Archived cards only surface in two places — an admin's archived
+            listing and a reader's saved articles — but in both the card would
+            otherwise be indistinguishable from a live one.
+          */}
+          {article.archivedAt && (
+            <>
+              <span className="text-brand">·</span>
+              <span className="font-semibold uppercase tracking-wide">Archived</span>
+            </>
+          )}
         </div>
 
         <Link to={`/articles/${article.slug}`}>

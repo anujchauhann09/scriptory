@@ -14,7 +14,7 @@ import { isArticleContentSource } from '../lib/article-content/content';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { motion, useReducedMotion } from 'motion/react';
-import { ArrowLeft, Clock, Calendar, Eye, Pencil, Trash2, Send, X, Heart, Share2, Link2, Twitter, Linkedin, Check, List, ArrowUp, Layers, ChevronLeft, ChevronRight, Bookmark, BookOpen } from 'lucide-react';
+import { ArrowLeft, Clock, Calendar, Eye, Pencil, Trash2, Send, X, Heart, Share2, Link2, Twitter, Linkedin, Check, List, ArrowUp, Layers, ChevronLeft, ChevronRight, Bookmark, BookOpen, Archive, ArchiveRestore } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 
 interface TocItem { id: string; text: string; level: number }
@@ -268,6 +268,7 @@ export const ArticleDetail = () => {
 
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   const [related, setRelated] = useState<ApiArticle[]>([]);
   const [toc, setToc] = useState<TocItem[]>([]);
@@ -480,6 +481,29 @@ export const ArticleDetail = () => {
     }
   };
 
+  /**
+   * Archive or restore. Unlike delete, this keeps the reader on the page — the
+   * article is still here, it has only left the listings — so the local copy is
+   * swapped for the server's rather than navigating away.
+   */
+  const handleArchiveToggle = async () => {
+    if (!article) return;
+    const next = !article.archivedAt;
+    setArchiving(true);
+    try {
+      const updated = await articlesApi.setArchived(article.uuid, next);
+      setArticle(updated);
+      // It has moved in or out of every cached listing, and out of or back into
+      // the related-posts sets built from them.
+      clearCache();
+    } catch {
+      // Left as-is: the button simply did not take, and the article on screen
+      // still reflects what the server holds.
+    } finally {
+      setArchiving(false);
+    }
+  };
+
   const handleLike = async () => {
     if (!user || !slug) return;
     setLikeLoading(true);
@@ -623,6 +647,24 @@ export const ArticleDetail = () => {
                     <Pencil className="mr-1.5 h-3.5 w-3.5" />
                     Edit
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleArchiveToggle}
+                    disabled={archiving}
+                  >
+                    {article.archivedAt ? (
+                      <>
+                        <ArchiveRestore className="mr-1.5 h-3.5 w-3.5" />
+                        {archiving ? 'Restoring…' : 'Restore'}
+                      </>
+                    ) : (
+                      <>
+                        <Archive className="mr-1.5 h-3.5 w-3.5" />
+                        {archiving ? 'Archiving…' : 'Archive'}
+                      </>
+                    )}
+                  </Button>
                   {deleteConfirm ? (
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">Sure?</span>
@@ -642,6 +684,28 @@ export const ArticleDetail = () => {
                 </div>
               )}
             </div>
+
+            {/*
+              Shown to everyone, not just admins. A reader who arrives from an
+              old link or a bookmark is the exact person archiving is meant to
+              serve — the page still works for them, and this is what tells them
+              why it is no longer listed anywhere.
+            */}
+            {article.archivedAt && (
+              <div className="mb-6 flex items-start gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
+                <Archive className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                <div className="text-sm">
+                  <p className="font-medium">This article has been archived.</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    It is kept here for reference and is no longer maintained or listed
+                    in the archive. Archived{' '}
+                    {new Date(article.archivedAt).toLocaleDateString('en-US', {
+                      year: 'numeric', month: 'long', day: 'numeric',
+                    })}.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/*
               Category first and visually distinct from tags: it is the one
@@ -805,7 +869,17 @@ export const ArticleDetail = () => {
                 Comments {comments.length > 0 && <span className="text-muted-foreground">({comments.length})</span>}
               </h2>
 
-              {user ? (
+              {/*
+                The composer closes on an archived article but the thread below
+                stays: retiring a post should not delete the discussion people
+                already had on it. Checked before the sign-in prompt so an
+                anonymous reader is not invited to log in and then refused.
+              */}
+              {article.archivedAt ? (
+                <p className="mb-8 text-sm text-muted-foreground">
+                  Comments are closed on archived articles.
+                </p>
+              ) : user ? (
                 <form onSubmit={handleCommentSubmit} className="mb-8">
                   <div className="flex items-start gap-3">
                     {user.profile?.avatarUrl ? (

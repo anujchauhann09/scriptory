@@ -147,7 +147,9 @@ const sendDigest = async ({ sinceDays = 7, max = 8 } = {}) => {
 
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
   const articles = await prisma.article.findMany({
-    where: { published: true, createdAt: { gte: since } },
+    // Never broadcast something that has been retired, even if it was published
+    // inside the window and archived shortly after.
+    where: { published: true, archivedAt: null, createdAt: { gte: since } },
     orderBy: { createdAt: "desc" },
     take: max,
     select: { title: true, slug: true, excerpt: true },

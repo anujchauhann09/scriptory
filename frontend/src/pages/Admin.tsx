@@ -18,8 +18,9 @@ import {
 import {
   Mail, Users, Inbox, RefreshCw, AlertCircle, Check, CircleCheck,
   Trash2, Download, Loader2, Activity, LayoutDashboard, Eye, Heart,
-  MessageSquare, FileText, TrendingUp, Send, Layers,
+  MessageSquare, FileText, TrendingUp, Send, Layers, Archive,
 } from 'lucide-react';
+import { cn } from '../utils/cn';
 import { motion, useReducedMotion } from 'motion/react';
 
 type Tab = 'overview' | 'categories' | 'messages' | 'subscribers' | 'activity';
@@ -470,13 +471,25 @@ const OverviewPanel = ({ data }: { data: AnalyticsOverview | null }) => {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      {/*
+        The archived tile only appears once something is actually archived —
+        a blog that never retires a post should not carry a permanent zero.
+        Both column counts are written out in full because Tailwind scans for
+        literal class names.
+      */}
+      <div className={cn(
+        'grid grid-cols-2 gap-3 sm:grid-cols-3',
+        totals.archived > 0 ? 'lg:grid-cols-7' : 'lg:grid-cols-6'
+      )}>
         <StatTile icon={<FileText className="h-4 w-4" />} label="Articles" value={totals.articles} />
         <StatTile icon={<Eye className="h-4 w-4" />} label="Views" value={totals.views} />
         <StatTile icon={<Heart className="h-4 w-4" />} label="Likes" value={totals.likes} />
         <StatTile icon={<MessageSquare className="h-4 w-4" />} label="Comments" value={totals.comments} />
         <StatTile icon={<Users className="h-4 w-4" />} label="Subscribers" value={totals.activeSubscribers} />
         <StatTile icon={<FileText className="h-4 w-4" />} label="Drafts" value={totals.drafts} />
+        {totals.archived > 0 && (
+          <StatTile icon={<Archive className="h-4 w-4" />} label="Archived" value={totals.archived} />
+        )}
       </div>
 
       <div className="card-premium rounded-2xl p-5">
@@ -540,6 +553,8 @@ const ACTION_LABELS: Record<string, string> = {
   'article.create': 'Article created',
   'article.update': 'Article updated',
   'article.delete': 'Article deleted',
+  'article.archive': 'Article archived',
+  'article.restore': 'Article restored',
 };
 
 const formatDateTime = (iso: string) =>

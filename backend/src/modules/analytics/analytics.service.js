@@ -17,6 +17,7 @@ const computeOverview = async () => {
   const [
     articles,
     published,
+    archived,
     comments,
     likes,
     subscribers,
@@ -26,7 +27,10 @@ const computeOverview = async () => {
     viewsByDay,
   ] = await Promise.all([
     prisma.article.count(),
-    prisma.article.count({ where: { published: true } }),
+    // "Published" means live: released and not retired. Counting archived posts
+    // here would report more articles on the dashboard than the site shows.
+    prisma.article.count({ where: { published: true, archivedAt: null } }),
+    prisma.article.count({ where: { NOT: { archivedAt: null } } }),
     prisma.comment.count(),
     prisma.like.count(),
     prisma.subscriber.count(),
@@ -49,7 +53,16 @@ const computeOverview = async () => {
     totals: {
       articles,
       published,
-      drafts: articles - published,
+      archived,
+      /**
+       * The three states partition the table — archived, live, and everything
+       * else — so drafts falls out by subtraction and cannot double-count.
+       *
+       * Before archiving existed this was `articles - published`, which would
+       * now file every retired post under "Drafts" and leave the tile climbing
+       * for the rest of the blog's life.
+       */
+      drafts: articles - published - archived,
       views: viewsAgg._sum.count ?? 0,
       likes,
       comments,

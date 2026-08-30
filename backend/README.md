@@ -113,7 +113,7 @@ NEWSLETTER_DIGEST_CRON=0 9 * * 1         # node-cron expression (Mondays 09:00)
 
 # Related posts via Gemini embeddings (optional; falls back to shared tags without a key)
 GEMINI_API_KEY=
-EMBEDDING_MODEL=text-embedding-004
+EMBEDDING_MODEL=gemini-embedding-2
 ```
 
 > **Note:** `ADMIN_EMAIL` / `ADMIN_PASSWORD` are only used the **first time** the admin is seeded. Editing them later does **not** change the existing admin's password — use the in-app *Change password*, or reset it directly in the DB / via a one-off script.

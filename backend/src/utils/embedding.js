@@ -8,7 +8,24 @@ const { readSecret } = require("../config/secrets");
 // frontend bundle by the Vite config, which published it to every visitor;
 // that injection is gone and the key now exists in exactly one place.
 const API_KEY = readSecret("GEMINI_API_KEY");
-const MODEL = process.env.EMBEDDING_MODEL || "text-embedding-004";
+
+/**
+ * The previous default, `text-embedding-004`, was retired by Google: the API
+ * now answers 404 for it, so every embedding silently failed and related posts
+ * quietly ran on the shared-tag fallback forever. It failed in the one way that
+ * looks like nothing is wrong.
+ *
+ * `gemini-embedding-2` is chosen over the also-current `gemini-embedding-001`
+ * for its input limit — 8192 tokens against 2048. The ~8000 characters sent
+ * below is roughly 2000 tokens, which sits right on the older model's ceiling
+ * and would start truncating the moment an article ran long.
+ *
+ * Changing this changes the vector width (004 was 768, both current models are
+ * 3072), and `cosineSimilarity` treats a width mismatch as "no similarity".
+ * Vectors written by a different model must therefore be regenerated, not left
+ * alongside the new ones — see `npm run reembed`.
+ */
+const MODEL = process.env.EMBEDDING_MODEL || "gemini-embedding-2";
 
 let client = null;
 const isEnabled = Boolean(API_KEY);
@@ -39,6 +56,9 @@ const generateEmbedding = async (text) => {
 };
 
 const cosineSimilarity = (a, b) => {
+  // A width mismatch means the two vectors came from different models and are
+  // not comparable at all. -1 sorts below every real score, so such a pair is
+  // simply never recommended.
   if (!a || !b || a.length !== b.length) return -1;
   let dot = 0, na = 0, nb = 0;
   for (let i = 0; i < a.length; i++) {

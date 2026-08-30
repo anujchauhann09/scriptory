@@ -17,9 +17,13 @@ router.get("/", async (req, res, next) => {
   try {
     const data = await memo.remember("stats:site", STATS_CACHE_TTL_MS, async () => {
       const [articles, viewsAgg, topics] = await Promise.all([
-        prisma.article.count({ where: { published: true } }),
+        // Counts what a reader can actually find from the archive page, so the
+        // strip never advertises more articles than the listing will show.
+        prisma.article.count({ where: { published: true, archivedAt: null } }),
         prisma.view.aggregate({ _sum: { count: true } }),
-        prisma.tag.count({ where: { articles: { some: { article: { published: true } } } } }),
+        prisma.tag.count({
+          where: { articles: { some: { article: { published: true, archivedAt: null } } } },
+        }),
       ]);
       return { articles, views: viewsAgg._sum.count ?? 0, topics };
     });

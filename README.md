@@ -13,7 +13,9 @@ A full-stack blogging platform built with React + Node.js. Premium reading exper
 ### Authoring & content
 - **Full-markdown editor** (marked, CommonMark + GFM) — headings, nested lists, task lists, tables, fenced code, blockquotes, images, raw HTML — sanitized with DOMPurify
 - **Callout blocks** (`> [!NOTE]` / TIP / WARNING …), **collapsible `<details>`**, and **Mermaid diagrams** (```mermaid)
+- **Inline media** — images, GIFs and **WebM animations** (up to 10MB) through one toolbar button; a WebM is inserted as a silent looping `:::animation` block, the GIF-style alternative to the separate MP4 video block
 - Cover image, tags, excerpt, **series/collections**, **draft scheduling** (`publishAt` + cron auto-publish)
+- **Archiving** — retire an article from discovery *without* breaking its URL. An archived post stays fully readable, keeps its comments, likes and view count, and drops out of the archive listing, search, related posts, the RSS feed, the sitemap and the newsletter digest. Its comment thread stays visible but closes to new replies. Reversible from the article page (admin), and distinct from a draft: a draft was never released, an archived post was
 - **Learning categories** — a curated path (Backend Engineering → System Design → DSA & CS → Cloud → DevOps → AI/ML), **managed from Admin → Categories** (create / rename / reorder / delete). **Always optional:** an article can publish with no category and be filed later without touching the article; deleting a category unfiles its articles rather than deleting them. See [docs/content-strategy.md](docs/content-strategy.md)
 - **Full-text search** (Postgres FTS, relevance-ranked over title + excerpt + content)
 
@@ -34,7 +36,7 @@ A full-stack blogging platform built with React + Node.js. Premium reading exper
 - **Audit log** of security & admin actions, with secrets redacted from every log sink
 
 ### Admin panel (`/admin`)
-- **Overview** — stat tiles, 30-day views chart, top posts
+- **Overview** — stat tiles (incl. an **Archived** count once anything is archived), 30-day views chart, top posts
 - **Categories** — manage the learning path: add, rename, reorder, delete (with article-impact warnings)
 - **Inbox** (contact messages: mark handled / delete), **Subscribers** (CSV export, delete, **send digest**), **Activity** (audit log)
 
@@ -45,6 +47,7 @@ A full-stack blogging platform built with React + Node.js. Premium reading exper
 ### Discovery
 - Filter the archive by **category** (`?category=<slug>`) or **tag**; both compose with search
 - `?uncategorized=true` lists everything still to be filed
+- `?archived=true` (admin only) lists retired articles; archived posts are hidden from every listing otherwise
 
 ### Discovery & SEO
 - **RSS feed**, **sitemap.xml**, **robots.txt**; per-page canonical/OG/Twitter meta + JSON-LD
@@ -168,7 +171,7 @@ NEWSLETTER_DIGEST_CRON=0 9 * * 1
 
 # Related posts via embeddings (optional; falls back to tags without a key)
 GEMINI_API_KEY=
-EMBEDDING_MODEL=text-embedding-004
+EMBEDDING_MODEL=gemini-embedding-2
 ```
 
 ## API Overview
@@ -186,7 +189,7 @@ EMBEDDING_MODEL=text-embedding-004
 | POST/GET | `/api/newsletter/{subscribe,unsubscribe,subscribers,digest}` | —/Admin | Subscribe / unsubscribe / manage / digest |
 | GET | `/api/analytics` · `/api/audit` | Admin | Dashboard + audit log |
 | GET | `/api/stats` · `/api/tags` | — | Public totals + tags |
-| POST | `/api/upload/{cover,inline,video,avatar}` | Admin/User | GCS-backed media uploads |
+| POST | `/api/upload/{cover,inline,video,avatar}` | Admin/User | GCS-backed media uploads (inline: images, GIF, WebM ≤10MB) |
 | GET | `/api/media/:token` | — | Read private bucket media through the API |
 | GET | `/rss.xml` · `/sitemap.xml` · `/robots.txt` · `/og/:slug.png` | — | Feeds + OG images (served at root) |
 

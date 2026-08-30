@@ -53,6 +53,30 @@ const normaliseBlock = (block) => {
       if (Number.isInteger(block.height) && block.height > 0) out.height = block.height;
       return out;
     }
+    /**
+     * A silent looping animation — a WebM used where a GIF would be.
+     *
+     * Its own type rather than a flag on `image`, because the two render as
+     * different elements: an image block is an <img>, and a WebM cannot appear
+     * in one. Keeping them separate means an image block's src is always an
+     * image, which is what the renderer and the sanitiser both assume.
+     *
+     * The shape deliberately mirrors `image` — same src/alt/caption/dimensions
+     * — so an animation lays out, captions and reads exactly like the still it
+     * replaces. `alt` is required here for the same reason it is there: this is
+     * content, and a reader using a screen reader gets nothing from a silent
+     * loop without it.
+     */
+    case "animation": {
+      const alt = optionalString(block.alt, 300);
+      if (!alt) fail("Animation blocks require alt text");
+      const out = { type: "animation", src: assertUrl(block.src, "Animation source"), alt };
+      withOptional(out, "caption", optionalString(block.caption, 500));
+      withOptional(out, "publicId", optionalString(block.publicId, 300));
+      if (Number.isInteger(block.width) && block.width > 0) out.width = block.width;
+      if (Number.isInteger(block.height) && block.height > 0) out.height = block.height;
+      return out;
+    }
     case "video": {
       const provider = block.provider === "youtube" || block.provider === "vimeo" ? block.provider : null;
       if (!provider) fail("Video provider must be youtube or vimeo");
@@ -142,6 +166,7 @@ const sourceToPlainText = (source) => {
     if (block.type === "callout") return block.content;
     if (block.type === "diagram") return block.source;
     if (block.type === "image") return [block.alt, block.caption].filter(Boolean).join(" ");
+    if (block.type === "animation") return [block.alt, block.caption].filter(Boolean).join(" ");
     if (block.type === "video") return [block.title, block.caption, block.provider, block.id].filter(Boolean).join(" ");
     if (block.type === "videoFile") return [block.title, block.caption, block.src].filter(Boolean).join(" ");
     if (block.type === "richLink") return [block.title, block.description, block.url].filter(Boolean).join(" ");
