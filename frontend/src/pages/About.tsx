@@ -64,6 +64,20 @@ export const About = () => {
             </li>
           </ul>
 
+          <h2>Scriptory Labs</h2>
+          <p>
+            Some ideas click faster when you can poke at them. So alongside the
+            writing I built{' '}
+            <a href="https://scriptory-labs.vercel.app" target="_blank" rel="noreferrer noopener">
+              Scriptory Labs
+            </a>{' '}
+            — a companion site where a concept from an article becomes something
+            you operate rather than read: a system to pull apart, data to move
+            through it, and a set of questions at the end to check what actually
+            stuck. The first one takes apart the question of what a computer
+            really is.
+          </p>
+
           <p>
             Feel free to explore my articles — I'm always open to discussing
             backend systems, architecture, and interesting engineering
